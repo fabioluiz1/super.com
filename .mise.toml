@@ -10,3 +10,8 @@ run = "npm install"
 description = "Run stylelint on Sass files"
 dir = "frontend"
 run = "npm run lint:sass"
+
+[tasks.lint]
+description = "Run ESLint on TypeScript"
+dir = "frontend"
+run = "npm run lint"

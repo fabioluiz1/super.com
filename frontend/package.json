@@ -6,6 +6,7 @@
   "type": "module",
   "scripts": {
     "start": "vite",
+    "lint": "eslint src/",
     "lint:sass": "stylelint \"src/**/*.sass\"",
     "lint:sass:fix": "stylelint \"src/**/*.sass\" --fix"
   },
@@ -14,9 +15,12 @@
     "react-dom": "^19.1.0"
   },
   "devDependencies": {
+    "@eslint/js": "^9.39.2",
     "@types/react": "^19.1.2",
     "@types/react-dom": "^19.1.2",
     "@vitejs/plugin-react": "^4.4.1",
+    "eslint": "^9.39.2",
+    "eslint-config-prettier": "^10.1.8",
     "globals": "^16.0.0",
     "postcss-sass": "^0.5.0",
     "sass": "^1.97.3",
