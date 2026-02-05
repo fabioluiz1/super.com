@@ -22,15 +22,26 @@ mise run lint:sass     # check for style errors
 
 #### Code Quality
 
-##### ESLint
+**ESLint** handles correctness — it finds bugs and enforces code rules (unused variables, implicit `any`, unsafe patterns). **Prettier** handles formatting — whitespace, line breaks, quotes, semicolons. `eslint-config-prettier` disables ESLint's formatting rules so only Prettier handles style.
 
-Catches bugs and enforces strict typing rules at the code level.
+##### ESLint
 
 - `typescript-eslint` strict preset
 - `no-explicit-any` enforced as error
 - `max-len` warns at 100 characters (URLs and strings excluded)
-- `eslint-config-prettier` disables rules that conflict with Prettier
 
 ```bash
 mise run lint          # check for lint errors
+```
+
+##### Prettier
+
+- `printWidth` 100 characters
+- `singleQuote` enabled
+- `semi` disabled (no semicolons)
+- `trailingComma` all
+
+```bash
+mise run format        # auto-format all source files
+mise run format:check  # check formatting without writing
 ```

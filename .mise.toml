@@ -15,3 +15,13 @@ run = "npm run lint:sass"
 description = "Run ESLint on TypeScript"
 dir = "frontend"
 run = "npm run lint"
+
+[tasks.format]
+description = "Auto-format with Prettier"
+dir = "frontend"
+run = "npm run format"
+
+[tasks."format:check"]
+description = "Check formatting with Prettier"
+dir = "frontend"
+run = "npm run format:check"

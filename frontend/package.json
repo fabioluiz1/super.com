@@ -8,7 +8,9 @@
     "start": "vite",
     "lint": "eslint src/",
     "lint:sass": "stylelint \"src/**/*.sass\"",
-    "lint:sass:fix": "stylelint \"src/**/*.sass\" --fix"
+    "lint:sass:fix": "stylelint \"src/**/*.sass\" --fix",
+    "format": "prettier --write src/",
+    "format:check": "prettier --check src/"
   },
   "dependencies": {
     "react": "^19.1.0",
@@ -23,6 +25,7 @@
     "eslint-config-prettier": "^10.1.8",
     "globals": "^16.0.0",
     "postcss-sass": "^0.5.0",
+    "prettier": "^3.8.1",
     "sass": "^1.97.3",
     "stylelint": "^16.0.0",
     "stylelint-config-standard": "^37.0.0",

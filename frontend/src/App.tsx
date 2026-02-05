@@ -5,9 +5,9 @@ import './styles/main.sass'
 
 function App() {
   return (
-      <div>
-          <h1>Your code goes here (obviously)</h1>
-      </div>
+    <div>
+      <h1>Your code goes here (obviously)</h1>
+    </div>
   )
 }
 
