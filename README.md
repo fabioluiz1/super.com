@@ -94,6 +94,16 @@ Alternatives: unittest (stdlib, class-based, more verbose), nose2 (legacy).
 mise run test:backend         # run tests with coverage report
 ```
 
+##### Test Fixtures ([conftest.py](backend/tests/conftest.py))
+
+**SQLite in-memory database** — [`sqlite+aiosqlite:///:memory:`](backend/tests/conftest.py#L11) creates a fresh database for each test run. No Docker needed, tests run fast, complete isolation. The `aiosqlite` driver provides async support for SQLite.
+
+**[`db` fixture](backend/tests/conftest.py#L17-L27)** — creates tables before yielding a session, drops tables after. Each test gets a clean database state. The `async with engine.begin()` provides a transaction for DDL operations.
+
+**[`client` fixture](backend/tests/conftest.py#L30-L45)** — httpx `AsyncClient` configured to call the FastAPI app directly via `ASGITransport` (no network, just in-process calls). `app.dependency_overrides[get_db]` replaces the real database dependency with the test database session — this is FastAPI's dependency injection override pattern.
+
+**Why httpx over TestClient?** — FastAPI's `TestClient` uses `requests` which is sync-only. For async endpoints with async database calls, you need an async test client. httpx provides `AsyncClient` that works with `ASGITransport` to call ASGI apps directly.
+
 #### FastAPI
 
 High-performance async web framework built on:

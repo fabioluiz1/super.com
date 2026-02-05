@@ -30,7 +30,7 @@ run = "uv run ruff format --check ."
 [tasks."typecheck:backend"]
 description = "Run mypy static type analysis"
 dir = "backend"
-run = "uv run mypy src/"
+run = "uv run mypy src/ tests/"
 
 [tasks."test:backend"]
 description = "Run pytest with coverage"

@@ -55,5 +55,6 @@ plugins = ["pydantic.mypy"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+pythonpath = ["src"]
 asyncio_mode = "strict"
 addopts = "--cov=src --cov-report=term-missing --no-header -q"
