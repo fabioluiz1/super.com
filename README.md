@@ -160,10 +160,30 @@ mise run dev:backend          # start server with hot reload on :8000
 
 ### Docker
 
-PostgreSQL 16 runs via Docker Compose with trust authentication (passwordless localhost).
+#### Services
+
+- **db** — PostgreSQL 16 with trust authentication (passwordless localhost)
+- **backend** — FastAPI app built from `backend/Dockerfile`
+
+#### Dockerfile (Multi-Stage Build)
+
+**Build stage** (`ghcr.io/astral-sh/uv:python3.12-bookworm-slim`) — uses uv's official image which includes Python 3.12 and uv pre-installed. Installs dependencies first (cached unless lock file changes), then copies source and installs the project. `--frozen` ensures the lock file is used exactly. `--no-dev` excludes dev dependencies.
+
+**Runtime stage** (`python:3.12-slim-bookworm`) — minimal image without uv or build tools. Only the `.venv` and source code are copied from the build stage. This keeps the final image small (~150MB vs ~500MB with build tools).
+
+**Why multi-stage?** — separates build-time dependencies (compilers, uv) from runtime. Smaller image = faster deploys, smaller attack surface.
+
+#### Health Checks
+
+The `db` service has a health check (`pg_isready`) so the `backend` service waits for PostgreSQL to be ready before starting. `depends_on: condition: service_healthy` ensures proper startup order.
+
+#### Commands
 
 ```bash
-docker compose up -d db       # start PostgreSQL
+docker compose up -d db       # start PostgreSQL only (for local dev)
+docker compose up -d          # start all services
+docker compose up --build     # rebuild images and start
 docker compose down            # stop all services
 docker compose down -v         # stop and delete data volume
+docker compose logs -f backend # tail backend logs
 ```
