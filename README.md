@@ -93,3 +93,13 @@ Alternatives: unittest (stdlib, class-based, more verbose), nose2 (legacy).
 ```bash
 mise run test:backend         # run tests with coverage report
 ```
+
+### Docker
+
+PostgreSQL 16 runs via Docker Compose with trust authentication (passwordless localhost). The backend connects at `postgresql+asyncpg://super@localhost:5432/super`.
+
+```bash
+docker compose up -d db       # start PostgreSQL
+docker compose down            # stop all services
+docker compose down -v         # stop and delete data volume
+```
