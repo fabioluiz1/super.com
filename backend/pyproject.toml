@@ -50,3 +50,8 @@ select = [
 python_version = "3.12"
 strict = true
 plugins = ["pydantic.mypy"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+asyncio_mode = "strict"
+addopts = "--cov=src --cov-report=term-missing --no-header -q"

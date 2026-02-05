@@ -32,6 +32,11 @@ description = "Run mypy static type analysis"
 dir = "backend"
 run = "uv run mypy src/"
 
+[tasks."test:backend"]
+description = "Run pytest with coverage"
+dir = "backend"
+run = "uv run pytest"
+
 [tasks."lint:sass"]
 description = "Run stylelint on Sass files"
 dir = "frontend"

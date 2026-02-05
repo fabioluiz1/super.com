@@ -77,3 +77,19 @@ Alternatives: pyright (Microsoft, faster but less ecosystem integration), pytype
 ```bash
 mise run typecheck:backend    # run static type analysis
 ```
+
+#### pytest
+
+Test framework with fixture-based dependency injection. `asyncio_mode = "strict"` requires explicit `@pytest.mark.asyncio` on async tests — this is the recommended mode because it prevents accidental async tests (e.g., forgetting to `await` a coroutine) from silently passing.
+
+Key plugins:
+- `pytest-asyncio` — run async test functions and fixtures
+- `pytest-cov` — measure code coverage
+- `httpx` — async HTTP client used as FastAPI test client (replaces `requests` for async)
+- `aiosqlite` — in-memory SQLite for fast isolated tests without Docker
+
+Alternatives: unittest (stdlib, class-based, more verbose), nose2 (legacy).
+
+```bash
+mise run test:backend         # run tests with coverage report
+```
