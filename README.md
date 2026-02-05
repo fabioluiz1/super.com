@@ -94,9 +94,33 @@ Alternatives: unittest (stdlib, class-based, more verbose), nose2 (legacy).
 mise run test:backend         # run tests with coverage report
 ```
 
+#### Database
+
+##### Connection URL
+
+`postgresql+asyncpg://super@localhost:5432/super`
+
+- `postgresql` — SQLAlchemy dialect name for PostgreSQL
+- `asyncpg` — the async driver (DBAPI). SQLAlchemy needs a driver to actually talk to the database. `asyncpg` is a high-performance async PostgreSQL driver written in Cython. Alternatives: `psycopg` (sync, most popular), `psycopg[async]` (async version of psycopg3)
+- `super@localhost:5432/super` — `user@host:port/database`. No password because Docker Compose uses trust authentication
+
+##### SQLAlchemy Async Setup
+
+**`create_async_engine(url)`** — creates a connection pool to the database. The engine doesn't connect immediately; it creates connections on demand and reuses them. Pool settings like `pool_size`, `max_overflow`, `pool_timeout` control how many concurrent connections are allowed.
+
+**`async_sessionmaker(engine, expire_on_commit=False)`** — factory that creates `AsyncSession` instances. A session is a unit-of-work: it tracks objects you've loaded/modified, and flushes changes to the database when you commit. `expire_on_commit=False` keeps objects usable after commit without re-querying — important for async because accessing expired attributes would need a sync database call.
+
+**`get_db()`** — FastAPI dependency that yields a session per request. The `async with` context manager ensures the session is closed even if the request raises an exception. This pattern (one session per request, injected via `Depends(get_db)`) is standard for FastAPI + SQLAlchemy.
+
+**`Base(DeclarativeBase)`** — base class for ORM models. Every model inherits from `Base`. SQLAlchemy uses this to track all models and their table metadata, which `Base.metadata.create_all()` uses to create tables.
+
+##### pydantic-settings
+
+`Settings(BaseSettings)` automatically reads environment variables. Field `database_url` maps to env var `DATABASE_URL` (case-insensitive). In production, set `DATABASE_URL` in the environment; in development, the default points to Docker Compose PostgreSQL. This 12-factor pattern keeps secrets out of code.
+
 ### Docker
 
-PostgreSQL 16 runs via Docker Compose with trust authentication (passwordless localhost). The backend connects at `postgresql+asyncpg://super@localhost:5432/super`.
+PostgreSQL 16 runs via Docker Compose with trust authentication (passwordless localhost).
 
 ```bash
 docker compose up -d db       # start PostgreSQL
