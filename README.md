@@ -94,6 +94,36 @@ Alternatives: unittest (stdlib, class-based, more verbose), nose2 (legacy).
 mise run test:backend         # run tests with coverage report
 ```
 
+#### FastAPI
+
+High-performance async web framework built on:
+- **Starlette** — ASGI framework (routing, middleware)
+- **Pydantic** — data validation and serialization
+
+**ASGI** (Asynchronous Server Gateway Interface) is the async successor to WSGI (Web Server Gateway Interface). WSGI (2003) is sync-only — one request = one thread. ASGI (2016) is async-native — supports `async/await`, WebSockets, and long-lived connections, allowing thousands of concurrent requests without thousands of threads.
+
+**uvicorn** is the ASGI server that runs FastAPI apps. It receives HTTP requests and calls your FastAPI app as an async coroutine.
+
+Alternatives: Flask (sync WSGI, simpler), Django (batteries-included, ORM built-in), Litestar (similar to FastAPI, different design choices).
+
+##### Application Structure ([main.py](backend/src/app/main.py))
+
+**[`app = FastAPI(lifespan=lifespan)`](backend/src/app/main.py#L18)** — creates the application instance. The `lifespan` parameter accepts an async context manager that runs setup code before the first request and cleanup code on shutdown.
+
+**[`@asynccontextmanager async def lifespan(app)`](backend/src/app/main.py#L7-L15)** — the lifespan context manager. Code before `yield` runs on startup (warm up caches, connect to services), code after `yield` runs on shutdown (close connections). This replaces the deprecated `@app.on_event("startup")` pattern.
+
+##### Running the Server
+
+**uvicorn** is the ASGI server that runs FastAPI apps. `--reload` watches for file changes and restarts (dev only). `--app-dir src` adds `src/` to Python's path so `from app.main import app` works.
+
+```bash
+mise run dev:backend          # start server with hot reload on :8000
+```
+
+- `http://localhost:8000/health` — health check endpoint (pings database)
+- `http://localhost:8000/docs` — Swagger UI (auto-generated from type hints)
+- `http://localhost:8000/redoc` — ReDoc (alternative API docs)
+
 #### Database
 
 ##### Connection URL
