@@ -42,6 +42,21 @@ description = "Run FastAPI dev server with hot reload"
 dir = "backend"
 run = "uv run uvicorn app.main:app --reload --app-dir src"
 
+[tasks."db:migrate"]
+description = "Run pending database migrations"
+dir = "backend"
+run = "uv run alembic upgrade head"
+
+[tasks."db:rollback"]
+description = "Rollback last database migration"
+dir = "backend"
+run = "uv run alembic downgrade -1"
+
+[tasks."db:generate"]
+description = "Generate new migration from model changes"
+dir = "backend"
+run = "uv run alembic revision --autogenerate -m"
+
 [tasks."lint:sass"]
 description = "Run stylelint on Sass files"
 dir = "frontend"

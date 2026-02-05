@@ -152,11 +152,34 @@ mise run dev:backend          # start server with hot reload on :8000
 
 **`get_db()`** — FastAPI dependency that yields a session per request. The `async with` context manager ensures the session is closed even if the request raises an exception. This pattern (one session per request, injected via `Depends(get_db)`) is standard for FastAPI + SQLAlchemy.
 
-**`Base(DeclarativeBase)`** — base class for ORM models. Every model inherits from `Base`. SQLAlchemy uses this to track all models and their table metadata, which `Base.metadata.create_all()` uses to create tables.
+**`Base(DeclarativeBase)`** — base class for ORM models. Every model inherits from `Base`. SQLAlchemy uses this to track all models and their table metadata. The `naming_convention` on `Base.metadata` ensures all constraints (primary keys, foreign keys, indexes) have predictable names — this is required for Alembic to generate correct `DROP CONSTRAINT` statements.
 
 ##### pydantic-settings
 
 `Settings(BaseSettings)` automatically reads environment variables. Field `database_url` maps to env var `DATABASE_URL` (case-insensitive). In production, set `DATABASE_URL` in the environment; in development, the default points to Docker Compose PostgreSQL. This 12-factor pattern keeps secrets out of code.
+
+See [docs/database.md](docs/database.md) for connection pool tuning and naming convention details.
+
+##### Alembic Migrations
+
+Database migrations track schema changes in version-controlled Python files. Like Rails migrations, each migration has `upgrade()` and `downgrade()` functions. Alembic autogenerates migrations by comparing your models to the current database schema.
+
+**Workflow:**
+1. Modify models in `backend/src/app/models/`
+2. Generate migration: `mise run db:generate "add users table"`
+3. Review generated file in `backend/alembic/versions/`
+4. Apply migration: `mise run db:migrate`
+
+**Configuration** ([alembic/env.py](backend/alembic/env.py)):
+- Imports `Base.metadata` to detect model changes
+- Gets `DATABASE_URL` from `app.config.settings`
+- Uses async engine (same as the app)
+
+```bash
+mise run db:migrate              # run pending migrations (alembic upgrade head)
+mise run db:rollback             # rollback last migration (alembic downgrade -1)
+mise run db:generate "message"   # generate migration from model changes
+```
 
 ### Docker
 
