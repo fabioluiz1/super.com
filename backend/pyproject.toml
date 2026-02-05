@@ -45,3 +45,8 @@ select = [
     "SIM", # flake8-simplify
     "TCH", # flake8-type-checking (move imports behind TYPE_CHECKING)
 ]
+
+[tool.mypy]
+python_version = "3.12"
+strict = true
+plugins = ["pydantic.mypy"]

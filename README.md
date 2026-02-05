@@ -65,3 +65,15 @@ mise run lint:backend         # check for lint errors
 mise run format:backend       # auto-format Python files
 mise run format:backend:check # check formatting without writing
 ```
+
+#### mypy
+
+Static type checker — analyzes type annotations without running the code. Catches type mismatches, missing return types, and incorrect function signatures at commit time instead of at runtime. `strict = true` enforces type annotations everywhere. The `pydantic.mypy` plugin lets mypy understand Pydantic model field types and validators.
+
+See [docs/mypy.md](docs/mypy.md) for a detailed explanation of why `strict = true` is a best practice, with BAD/GOOD examples for each check it enables.
+
+Alternatives: pyright (Microsoft, faster but less ecosystem integration), pytype (Google, inference-heavy).
+
+```bash
+mise run typecheck:backend    # run static type analysis
+```

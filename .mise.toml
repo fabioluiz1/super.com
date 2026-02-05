@@ -27,6 +27,11 @@ description = "Check Python formatting with ruff"
 dir = "backend"
 run = "uv run ruff format --check ."
 
+[tasks."typecheck:backend"]
+description = "Run mypy static type analysis"
+dir = "backend"
+run = "uv run mypy src/"
+
 [tasks."lint:sass"]
 description = "Run stylelint on Sass files"
 dir = "frontend"
