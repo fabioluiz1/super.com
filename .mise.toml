@@ -1,5 +1,11 @@
 [tools]
 node = "24.7.0"
+python = "3.12"
+
+[tasks."install:backend"]
+description = "Install backend dependencies"
+dir = "backend"
+run = "uv sync"
 
 [tasks."install:frontend"]
 description = "Install frontend dependencies"

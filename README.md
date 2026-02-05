@@ -2,7 +2,7 @@
 
 This monorepo uses [mise](https://mise.jdx.dev/) as a single tool to replace three:
 
-- **`mise install`** pins and installs the exact Node version from `.mise.toml` — replaces **nvm**
+- **`mise install`** pins and installs the exact Node and Python versions from `.mise.toml` — replaces **nvm** / **pyenv**
 - **`mise run <task>`** runs linters and formatters defined in `.mise.toml` — replaces **per-project npm scripts at the root**
 - **`mise run setup`** generates a git pre-commit hook that runs all checks before every commit — replaces:
   - **husky** — installs git hooks (e.g., pre-commit) so scripts run automatically on `git commit`
@@ -14,6 +14,7 @@ This monorepo uses [mise](https://mise.jdx.dev/) as a single tool to replace thr
 mise trust
 mise install
 mise run install:frontend
+mise run install:backend
 mise run setup          # install git pre-commit hook
 ```
 
