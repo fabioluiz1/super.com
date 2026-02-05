@@ -9,3 +9,13 @@ mise trust
 mise install
 mise run install:frontend
 ```
+
+### Frontend
+
+#### Stylelint
+
+Lints Sass files with `postcss-sass` for indented syntax support.
+
+```bash
+mise run lint:sass     # check for style errors
+```

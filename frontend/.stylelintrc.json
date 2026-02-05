@@ -1,0 +1,8 @@
+{
+  "extends": "stylelint-config-standard",
+  "customSyntax": "postcss-sass",
+  "rules": {
+    "no-empty-source": null,
+    "declaration-property-value-no-unknown": null
+  }
+}

@@ -5,3 +5,8 @@ node = "24.7.0"
 description = "Install frontend dependencies"
 dir = "frontend"
 run = "npm install"
+
+[tasks."lint:sass"]
+description = "Run stylelint on Sass files"
+dir = "frontend"
+run = "npm run lint:sass"

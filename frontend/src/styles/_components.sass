@@ -1,0 +1,86 @@
+@use "sass:color"
+
+// Buttons
+.btn
+  display: inline-flex
+  align-items: center
+  justify-content: center
+  gap: $space-2
+  padding: $space-3 $space-6
+  border: none
+  border-radius: $radius-lg
+  font-weight: $font-weight-semibold
+  font-size: 14px
+  cursor: pointer
+  transition: background-color 0.2s, transform 0.1s
+
+  &:active
+    transform: scale(0.98)
+
+.btn-primary
+  background: $color-primary
+  color: #fff
+
+  &:hover
+    background: $color-primary-hover
+
+.btn-secondary
+  background: $color-background-light
+  color: $color-text
+
+  &:hover
+    background: color.adjust($color-background-light, $lightness: -5%)
+
+// Inputs
+
+.input
+  width: 100%
+  padding: $space-3 $space-4
+  border: 1px solid $color-border
+  border-radius: $radius-sm
+  font-size: 14px
+  outline: none
+  transition: border-color 0.2s
+
+  &:focus
+    border-color: $color-primary
+
+  &::placeholder
+    color: $color-text-muted
+
+// Cards
+
+.card
+  background: $color-background
+  border-radius: $radius-md
+  box-shadow: $shadow-sm
+  padding: $space-4
+  transition: box-shadow 0.2s
+
+  &:hover
+    box-shadow: $shadow-md
+
+// Pills / Tags
+
+.pill
+  display: inline-flex
+  align-items: center
+  padding: $space-1 $space-3
+  border-radius: $radius-full
+  font-size: 12px
+  font-weight: $font-weight-medium
+  background: $color-background-light
+  color: $color-text-muted
+  cursor: pointer
+  transition: all 0.2s
+
+  &.active
+    background: $color-primary
+    color: #fff
+
+// Layout helpers
+
+.container
+  max-width: 1200px
+  margin: 0 auto
+  padding: 0 $space-4

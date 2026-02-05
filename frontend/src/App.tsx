@@ -1,4 +1,4 @@
-import './App.css'
+import './styles/main.sass'
 
 // How to import the assets:
 // -- import rightArrow from './assets/rightArrow.svg'
