@@ -53,3 +53,15 @@ mise run lint          # check for lint errors
 mise run format        # auto-format all source files
 mise run format:check  # check formatting without writing
 ```
+
+### Backend
+
+#### Ruff
+
+Handles both linting and formatting for Python — a single Rust-based tool that replaces flake8 (linting), isort (import sorting), black (formatting), and pylint (code analysis). One config in `pyproject.toml`, one CLI. See `[tool.ruff]` in `backend/pyproject.toml` for settings and enabled rules.
+
+```bash
+mise run lint:backend         # check for lint errors
+mise run format:backend       # auto-format Python files
+mise run format:backend:check # check formatting without writing
+```

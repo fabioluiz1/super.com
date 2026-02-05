@@ -12,6 +12,21 @@ description = "Install frontend dependencies"
 dir = "frontend"
 run = "npm install"
 
+[tasks."lint:backend"]
+description = "Run ruff linter on Python files"
+dir = "backend"
+run = "uv run ruff check ."
+
+[tasks."format:backend"]
+description = "Auto-format Python files with ruff"
+dir = "backend"
+run = "uv run ruff format ."
+
+[tasks."format:backend:check"]
+description = "Check Python formatting with ruff"
+dir = "backend"
+run = "uv run ruff format --check ."
+
 [tasks."lint:sass"]
 description = "Run stylelint on Sass files"
 dir = "frontend"
