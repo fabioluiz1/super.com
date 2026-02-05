@@ -1,6 +1,12 @@
 # Super.com Mock Interview
 
-This monorepo uses [mise](https://mise.jdx.dev/) to pin tool versions (Node, etc.) and run tasks across subprojects. One `mise install` replaces manual version management, and `mise run` provides a unified interface to linters, formatters, and build scripts — no need for husky, lint-staged, or per-project npm scripts at the root.
+This monorepo uses [mise](https://mise.jdx.dev/) as a single tool to replace three:
+
+- **`mise install`** pins and installs the exact Node version from `.mise.toml` — replaces **nvm**
+- **`mise run <task>`** runs linters and formatters defined in `.mise.toml` — replaces **per-project npm scripts at the root**
+- **`mise run setup`** generates a git pre-commit hook that runs all checks before every commit — replaces:
+  - **husky** — installs git hooks (e.g., pre-commit) so scripts run automatically on `git commit`
+  - **lint-staged** — filters `git diff --staged` to only lint/format files you're about to commit, not the entire codebase
 
 ## Quickstart
 
@@ -8,6 +14,7 @@ This monorepo uses [mise](https://mise.jdx.dev/) to pin tool versions (Node, etc
 mise trust
 mise install
 mise run install:frontend
+mise run setup          # install git pre-commit hook
 ```
 
 ### Frontend
