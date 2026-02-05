@@ -59,7 +59,7 @@ run = "npm run format:check"
 
 [tasks.pre-commit]
 description = "Run all checks (used by git pre-commit hook)"
-depends = ["lint:sass", "lint", "format:check"]
+depends = ["lint:sass", "lint", "format:check", "lint:backend", "format:backend:check", "typecheck:backend"]
 
 [tasks.setup]
 description = "Install git hooks"
