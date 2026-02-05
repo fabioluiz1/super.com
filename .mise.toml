@@ -1,0 +1,7 @@
+[tools]
+node = "24.7.0"
+
+[tasks."install:frontend"]
+description = "Install frontend dependencies"
+dir = "frontend"
+run = "npm install"
