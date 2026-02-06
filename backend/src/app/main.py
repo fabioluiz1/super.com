@@ -2,12 +2,16 @@ from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from typing import Annotated
 
-from fastapi import Depends, FastAPI
+from fastapi import Depends, FastAPI, Request
+from fastapi.responses import JSONResponse
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.session import get_db, shutdown
+from app.logging import get_logger
 from app.middleware import RequestIDMiddleware
+
+logger = get_logger(__name__)
 
 
 @asynccontextmanager
@@ -23,6 +27,21 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
 
 app = FastAPI(lifespan=lifespan)
 app.add_middleware(RequestIDMiddleware)
+
+
+@app.exception_handler(Exception)
+async def unhandled_exception_handler(request: Request, exc: Exception) -> JSONResponse:
+    """Log unhandled exceptions and return a safe error response.
+
+    - Logs full exception with traceback (includes request_id from context)
+    - Returns generic error to client (no stack traces leaked)
+    """
+    logger.exception("unhandled_exception", path=request.url.path, method=request.method)
+    return JSONResponse(
+        status_code=500,
+        content={"detail": "Internal server error"},
+    )
+
 
 # Database session type with dependency injection.
 #
