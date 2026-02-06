@@ -4,9 +4,9 @@ This monorepo uses [mise](https://mise.jdx.dev/) as a single tool to replace thr
 
 - **`mise install`** pins and installs the exact Node and Python versions from `.mise.toml` — replaces **nvm** / **pyenv**
 - **`mise run <task>`** runs linters and formatters defined in `.mise.toml` — replaces **per-project npm scripts at the root**
-- **`mise run setup`** generates a git pre-commit hook that runs all checks before every commit — replaces:
-  - **husky** — installs git hooks (e.g., pre-commit) so scripts run automatically on `git commit`
-  - **lint-staged** — filters `git diff --staged` to only lint/format files you're about to commit, not the entire codebase
+- **`mise run setup`** installs git hooks — replaces **husky** + **lint-staged** + **commitlint**:
+  - **pre-commit** — runs all linters, formatters, and typecheck before every commit
+  - **commit-msg** — validates commit messages follow [Conventional Commits](https://www.conventionalcommits.org/) (`feat:`, `fix:`, `docs:`, etc.)
 
 ## Quickstart
 
@@ -15,7 +15,7 @@ mise trust
 mise install
 mise run install:frontend
 mise run install:backend
-mise run setup          # install git pre-commit hook
+mise run setup          # install git hooks (pre-commit + commit-msg)
 ```
 
 ### Frontend

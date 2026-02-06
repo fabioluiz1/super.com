@@ -82,5 +82,5 @@ description = "Run all checks (used by git pre-commit hook)"
 depends = ["lint:sass", "lint", "format:check", "lint:backend", "format:backend:check", "typecheck:backend"]
 
 [tasks.setup]
-description = "Install git hooks"
-run = "mise generate git-pre-commit --write"
+description = "Install git pre-commit and commit-msg hooks"
+run = "mise generate git-pre-commit --write && cp scripts/hooks/commit-msg .git/hooks/commit-msg && chmod +x .git/hooks/commit-msg"
