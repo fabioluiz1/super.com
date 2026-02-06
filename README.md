@@ -56,7 +56,33 @@ mise run format:check  # check formatting without writing
 
 ### Backend
 
-#### Ruff
+Dependencies are managed by [uv](https://docs.astral.sh/uv/) — a Rust-based Python package manager that replaces pip, poetry, and pipenv. `mise run install:backend` runs `uv sync`, which installs exact versions from `uv.lock`.
+
+#### Architecture
+
+```
+backend/
+├── pyproject.toml          # dependencies + tool config (ruff, mypy, pytest)
+├── Dockerfile              # multi-stage build (see docs/docker.md)
+├── alembic.ini             # migration config
+├── .env.example            # environment variable template
+├── alembic/
+│   ├── env.py              # async migration runner
+│   └── versions/           # generated migration files
+├── src/app/
+│   ├── main.py             # FastAPI app, lifespan, routes
+│   ├── config.py           # pydantic-settings (env vars -> typed config)
+│   ├── logging.py          # structlog JSON logging setup
+│   ├── middleware.py        # request ID tracing
+│   └── db/session.py       # async engine, session factory, Base model
+└── tests/
+    ├── conftest.py          # fixtures (in-memory SQLite, async HTTP client)
+    └── test_health.py       # health endpoint test
+```
+
+#### Code Quality
+
+##### Ruff
 
 Handles both linting and formatting for Python — a single Rust-based tool that replaces flake8 (linting), isort (import sorting), black (formatting), and pylint (code analysis). One config in `pyproject.toml`, one CLI. See `[tool.ruff]` in `backend/pyproject.toml` for settings and enabled rules.
 
@@ -66,7 +92,7 @@ mise run format:backend       # auto-format Python files
 mise run format:backend:check # check formatting without writing
 ```
 
-#### mypy
+##### mypy
 
 Static type checker — analyzes type annotations without running the code. Catches type mismatches, missing return types, and incorrect function signatures at commit time instead of at runtime. `strict = true` enforces type annotations everywhere. The `pydantic.mypy` plugin lets mypy understand Pydantic model field types and validators.
 
@@ -78,102 +104,55 @@ Alternatives: pyright (Microsoft, faster but less ecosystem integration), pytype
 mise run typecheck:backend    # run static type analysis
 ```
 
-#### pytest
+#### Testing
 
-Test framework with fixture-based dependency injection. `asyncio_mode = "strict"` requires explicit `@pytest.mark.asyncio` on async tests — this is the recommended mode because it prevents accidental async tests (e.g., forgetting to `await` a coroutine) from silently passing.
+pytest with async support, in-memory SQLite for isolation, and httpx for async HTTP calls. `asyncio_mode = "strict"` requires explicit `@pytest.mark.asyncio` on async tests — prevents accidental async tests from silently passing.
 
-Key plugins:
-- `pytest-asyncio` — run async test functions and fixtures
-- `pytest-cov` — measure code coverage
-- `httpx` — async HTTP client used as FastAPI test client (replaces `requests` for async)
-- `aiosqlite` — in-memory SQLite for fast isolated tests without Docker
-
-Alternatives: unittest (stdlib, class-based, more verbose), nose2 (legacy).
+See [docs/testing.md](docs/testing.md) for fixture details, the dependency override pattern, and why httpx is used over FastAPI's TestClient.
 
 ```bash
 mise run test:backend         # run tests with coverage report
 ```
 
-##### Test Fixtures ([conftest.py](backend/tests/conftest.py))
-
-**SQLite in-memory database** — [`sqlite+aiosqlite:///:memory:`](backend/tests/conftest.py#L11) creates a fresh database for each test run. No Docker needed, tests run fast, complete isolation. The `aiosqlite` driver provides async support for SQLite.
-
-**[`db` fixture](backend/tests/conftest.py#L17-L27)** — creates tables before yielding a session, drops tables after. Each test gets a clean database state. The `async with engine.begin()` provides a transaction for DDL operations.
-
-**[`client` fixture](backend/tests/conftest.py#L30-L45)** — httpx `AsyncClient` configured to call the FastAPI app directly via `ASGITransport` (no network, just in-process calls). `app.dependency_overrides[get_db]` replaces the real database dependency with the test database session — this is FastAPI's dependency injection override pattern.
-
-**Why httpx over TestClient?** — FastAPI's `TestClient` uses `requests` which is sync-only. For async endpoints with async database calls, you need an async test client. httpx provides `AsyncClient` that works with `ASGITransport` to call ASGI apps directly.
-
 #### FastAPI
 
-High-performance async web framework built on:
-- **Starlette** — ASGI framework (routing, middleware)
-- **Pydantic** — data validation and serialization
+High-performance async web framework built on Starlette (ASGI routing/middleware) and Pydantic (data validation). Runs on uvicorn, an ASGI server.
 
-**ASGI** (Asynchronous Server Gateway Interface) is the async successor to WSGI (Web Server Gateway Interface). WSGI (2003) is sync-only — one request = one thread. ASGI (2016) is async-native — supports `async/await`, WebSockets, and long-lived connections, allowing thousands of concurrent requests without thousands of threads.
-
-**uvicorn** is the ASGI server that runs FastAPI apps. It receives HTTP requests and calls your FastAPI app as an async coroutine.
-
-Alternatives: Flask (sync WSGI, simpler), Django (batteries-included, ORM built-in), Litestar (similar to FastAPI, different design choices).
-
-##### Application Structure ([main.py](backend/src/app/main.py))
-
-**[`app = FastAPI(lifespan=lifespan)`](backend/src/app/main.py#L18)** — creates the application instance. The `lifespan` parameter accepts an async context manager that runs setup code before the first request and cleanup code on shutdown.
-
-**[`@asynccontextmanager async def lifespan(app)`](backend/src/app/main.py#L7-L15)** — the lifespan context manager. Code before `yield` runs on startup (warm up caches, connect to services), code after `yield` runs on shutdown (close connections). This replaces the deprecated `@app.on_event("startup")` pattern.
-
-##### Running the Server
-
-**uvicorn** is the ASGI server that runs FastAPI apps. `--reload` watches for file changes and restarts (dev only). `--app-dir src` adds `src/` to Python's path so `from app.main import app` works.
+See [docs/fastapi.md](docs/fastapi.md) for ASGI vs WSGI, the lifespan pattern, dependency injection, and application structure.
 
 ```bash
 mise run dev:backend          # start server with hot reload on :8000
 ```
 
-- `http://localhost:8000/health` — health check endpoint (pings database)
+- `http://localhost:8000/health` — health check (pings database)
 - `http://localhost:8000/docs` — Swagger UI (auto-generated from type hints)
 - `http://localhost:8000/redoc` — ReDoc (alternative API docs)
 
+#### Structured Logging
+
+JSON-structured logs via [structlog](https://www.structlog.org/). Every log event is a JSON object with automatic context binding — fields like `request_id`, `timestamp`, and `level` are included without passing them explicitly.
+
+Request ID middleware assigns a unique `X-Request-ID` to every request and binds it to all logs via Python's `contextvars`. All logs during a single request share the same `request_id`, making it trivial to trace a request across log lines.
+
+See [docs/structlog.md](docs/structlog.md) for the processor pipeline, contextvars pattern, and end-to-end tracing example.
+
 #### Database
 
-##### Connection URL
+PostgreSQL with async SQLAlchemy. The connection URL format is `postgresql+asyncpg://user@host:port/database` — `asyncpg` is a high-performance async PostgreSQL driver written in Cython.
 
-`postgresql+asyncpg://super@localhost:5432/super`
+Configuration is loaded from environment variables via pydantic-settings — field `database_url` maps to env var `DATABASE_URL`. In development, defaults point to Docker Compose PostgreSQL. See `.env.example` for all settings.
 
-- `postgresql` — SQLAlchemy dialect name for PostgreSQL
-- `asyncpg` — the async driver (DBAPI). SQLAlchemy needs a driver to actually talk to the database. `asyncpg` is a high-performance async PostgreSQL driver written in Cython. Alternatives: `psycopg` (sync, most popular), `psycopg[async]` (async version of psycopg3)
-- `super@localhost:5432/super` — `user@host:port/database`. No password because Docker Compose uses trust authentication
+See [docs/database.md](docs/database.md) for SQLAlchemy async setup, connection pooling, and naming conventions.
 
-##### SQLAlchemy Async Setup
+#### Alembic Migrations
 
-**`create_async_engine(url)`** — creates a connection pool to the database. The engine doesn't connect immediately; it creates connections on demand and reuses them. Pool settings like `pool_size`, `max_overflow`, `pool_timeout` control how many concurrent connections are allowed.
-
-**`async_sessionmaker(engine, expire_on_commit=False)`** — factory that creates `AsyncSession` instances. A session is a unit-of-work: it tracks objects you've loaded/modified, and flushes changes to the database when you commit. `expire_on_commit=False` keeps objects usable after commit without re-querying — important for async because accessing expired attributes would need a sync database call.
-
-**`get_db()`** — FastAPI dependency that yields a session per request. The `async with` context manager ensures the session is closed even if the request raises an exception. This pattern (one session per request, injected via `Depends(get_db)`) is standard for FastAPI + SQLAlchemy.
-
-**`Base(DeclarativeBase)`** — base class for ORM models. Every model inherits from `Base`. SQLAlchemy uses this to track all models and their table metadata. The `naming_convention` on `Base.metadata` ensures all constraints (primary keys, foreign keys, indexes) have predictable names — this is required for Alembic to generate correct `DROP CONSTRAINT` statements.
-
-##### pydantic-settings
-
-`Settings(BaseSettings)` automatically reads environment variables. Field `database_url` maps to env var `DATABASE_URL` (case-insensitive). In production, set `DATABASE_URL` in the environment; in development, the default points to Docker Compose PostgreSQL. This 12-factor pattern keeps secrets out of code.
-
-See [docs/database.md](docs/database.md) for connection pool tuning and naming convention details.
-
-##### Alembic Migrations
-
-Database migrations track schema changes in version-controlled Python files. Like Rails migrations, each migration has `upgrade()` and `downgrade()` functions. Alembic autogenerates migrations by comparing your models to the current database schema.
+Database migrations track schema changes in version-controlled Python files. Each migration has `upgrade()` and `downgrade()` functions. Alembic autogenerates migrations by comparing your models to the current database schema.
 
 **Workflow:**
 1. Modify models in `backend/src/app/models/`
 2. Generate migration: `mise run db:generate "add users table"`
 3. Review generated file in `backend/alembic/versions/`
 4. Apply migration: `mise run db:migrate`
-
-**Configuration** ([alembic/env.py](backend/alembic/env.py)):
-- Imports `Base.metadata` to detect model changes
-- Gets `DATABASE_URL` from `app.config.settings`
-- Uses async engine (same as the app)
 
 ```bash
 mise run db:migrate              # run pending migrations (alembic upgrade head)
@@ -183,24 +162,9 @@ mise run db:generate "message"   # generate migration from model changes
 
 ### Docker
 
-#### Services
+PostgreSQL 16 and FastAPI backend via Docker Compose. Multi-stage Dockerfile keeps the final image small (~150MB) by separating build tools from runtime.
 
-- **db** — PostgreSQL 16 with trust authentication (passwordless localhost)
-- **backend** — FastAPI app built from `backend/Dockerfile`
-
-#### Dockerfile (Multi-Stage Build)
-
-**Build stage** (`ghcr.io/astral-sh/uv:python3.12-bookworm-slim`) — uses uv's official image which includes Python 3.12 and uv pre-installed. Installs dependencies first (cached unless lock file changes), then copies source and installs the project. `--frozen` ensures the lock file is used exactly. `--no-dev` excludes dev dependencies.
-
-**Runtime stage** (`python:3.12-slim-bookworm`) — minimal image without uv or build tools. Only the `.venv` and source code are copied from the build stage. This keeps the final image small (~150MB vs ~500MB with build tools).
-
-**Why multi-stage?** — separates build-time dependencies (compilers, uv) from runtime. Smaller image = faster deploys, smaller attack surface.
-
-#### Health Checks
-
-The `db` service has a health check (`pg_isready`) so the `backend` service waits for PostgreSQL to be ready before starting. `depends_on: condition: service_healthy` ensures proper startup order.
-
-#### Commands
+See [docs/docker.md](docs/docker.md) for multi-stage build details and service configuration.
 
 ```bash
 docker compose up -d db       # start PostgreSQL only (for local dev)

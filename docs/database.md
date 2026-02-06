@@ -1,4 +1,86 @@
-# Database Configuration
+# Database
+
+## Connection URL
+
+`postgresql+asyncpg://super@localhost:5432/super`
+
+| Part | Meaning |
+|------|---------|
+| `postgresql` | SQLAlchemy dialect name for PostgreSQL |
+| `asyncpg` | Async driver (DBAPI). SQLAlchemy needs a driver to talk to the database. `asyncpg` is a high-performance async PostgreSQL driver written in Cython |
+| `super@localhost:5432/super` | `user@host:port/database`. No password because Docker Compose uses trust authentication |
+
+Alternatives: `psycopg` (sync, most popular), `psycopg[async]` (async version of psycopg3).
+
+## SQLAlchemy Async Setup ([session.py](../backend/src/app/db/session.py))
+
+### Engine
+
+```python
+engine = create_async_engine(
+    settings.database_url,
+    pool_size=settings.db_pool_size,
+    max_overflow=settings.db_max_overflow,
+    ...
+)
+```
+
+`create_async_engine(url)` creates a connection pool to the database. The engine doesn't connect immediately — it creates connections on demand and reuses them. Pool settings control how many concurrent connections are allowed (see [Connection Pool](#connection-pool) below).
+
+### Session Factory
+
+```python
+async_session = async_sessionmaker(engine, expire_on_commit=False)
+```
+
+A factory that creates `AsyncSession` instances. A session is a unit-of-work: it tracks objects you've loaded/modified, and flushes changes to the database when you commit.
+
+`expire_on_commit=False` keeps objects usable after commit without re-querying. This is important for async — accessing expired attributes would trigger a sync database call, which raises an error in async context.
+
+### Database Dependency
+
+```python
+async def get_db() -> AsyncGenerator[AsyncSession, None]:
+    async with async_session() as session:
+        yield session
+```
+
+FastAPI dependency that yields one session per request. The `async with` context manager ensures the session is closed even if the request raises an exception. This pattern (one session per request, injected via `Depends(get_db)`) is standard for FastAPI + SQLAlchemy.
+
+### Base Model
+
+```python
+class Base(DeclarativeBase):
+    metadata = MetaData(naming_convention=NAMING_CONVENTION)
+```
+
+Base class for all ORM models. Every model inherits from `Base`. SQLAlchemy uses `Base.metadata` to track all registered models and their table schemas. The `naming_convention` ensures all constraints have predictable names (see [Naming Conventions](#naming-conventions) below).
+
+### Graceful Shutdown
+
+```python
+async def shutdown() -> None:
+    await engine.dispose()
+```
+
+Closes all pooled connections. Called in FastAPI's lifespan context manager on app shutdown.
+
+## pydantic-settings ([config.py](../backend/src/app/config.py))
+
+```python
+class Settings(BaseSettings):
+    database_url: str = "postgresql+asyncpg://super@localhost:5432/super"
+    db_pool_size: int = 5
+    ...
+
+    model_config = SettingsConfigDict(env_file=".env", extra="ignore")
+
+settings = Settings()
+```
+
+`Settings(BaseSettings)` automatically reads environment variables. Field `database_url` maps to env var `DATABASE_URL` (case-insensitive). In production, set `DATABASE_URL` in the environment. In development, the default points to Docker Compose PostgreSQL. The `env_file=".env"` also reads from a `.env` file if present.
+
+This [12-factor](https://12factor.net/config) pattern keeps secrets out of code.
 
 ## Connection Pool
 
