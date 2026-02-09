@@ -13,6 +13,7 @@ from sqlalchemy.engine import Connection
 from sqlalchemy.ext.asyncio import async_engine_from_config
 
 # Import our app's Base (contains all model metadata) and settings (database URL)
+import app.models  # noqa: F401 — registers models with Base.metadata for autogenerate
 from app.config import settings
 from app.db.session import Base
 
