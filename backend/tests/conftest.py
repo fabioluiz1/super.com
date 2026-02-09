@@ -3,14 +3,15 @@ from collections.abc import AsyncIterator
 import pytest_asyncio
 from httpx import ASGITransport, AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
+from sqlalchemy.pool import NullPool
 
 from app.db.session import Base, get_db
 from app.main import app
 
-# SQLite async in-memory database for tests — no Docker needed, fast, isolated per test
-TEST_DATABASE_URL = "sqlite+aiosqlite:///:memory:"
+# Separate Postgres database for tests — created by docker/init-test-db.sql on first startup
+TEST_DATABASE_URL = "postgresql+asyncpg://super@localhost:5432/super_test"
 
-engine = create_async_engine(TEST_DATABASE_URL)
+engine = create_async_engine(TEST_DATABASE_URL, poolclass=NullPool)
 async_session = async_sessionmaker(engine, expire_on_commit=False)
 
 

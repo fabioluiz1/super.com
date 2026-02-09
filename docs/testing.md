@@ -22,24 +22,23 @@ addopts = "--cov=src --cov-report=term-missing --no-header -q"
 | `pytest-asyncio` | Run async test functions and fixtures |
 | `pytest-cov` | Measure code coverage |
 | `httpx` | Async HTTP client used as FastAPI test client |
-| `aiosqlite` | In-memory SQLite for fast isolated tests without Docker |
+| `asyncpg` | Async Postgres driver (same as production) |
 
 Alternatives to pytest: unittest (stdlib, class-based, more verbose), nose2 (legacy).
 
 ## Test Fixtures ([conftest.py](../backend/tests/conftest.py))
 
-### In-Memory Database
+### Test Database
 
 ```python
-TEST_DATABASE_URL = "sqlite+aiosqlite:///:memory:"
+TEST_DATABASE_URL = "postgresql+asyncpg://super@localhost:5432/super_test"
 engine = create_async_engine(TEST_DATABASE_URL)
 ```
 
-Uses SQLite in memory instead of PostgreSQL:
+Uses a separate Postgres database (`super_test`), created by `docker/init-test-db.sql` on first container startup:
 
-- No Docker needed to run tests
-- Each test gets a fresh, isolated database
-- Fast — no network, no disk I/O
+- Same engine as dev and production — no dialect mismatches
+- Each test gets a fresh, isolated schema via `create_all` / `drop_all`
 
 ### `db` Fixture
 
@@ -75,7 +74,7 @@ async def client(db: AsyncSession) -> AsyncIterator[AsyncClient]:
     app.dependency_overrides.clear()
 ```
 
-**`app.dependency_overrides`** — FastAPI's dependency injection override. Replaces the real `get_db` (which connects to PostgreSQL) with a function that yields the test's SQLite session.
+**`app.dependency_overrides`** — FastAPI's dependency injection override. Replaces the real `get_db` (which connects to the dev database) with a function that yields the test database session.
 
 **`ASGITransport(app=app)`** — calls the FastAPI app directly, in-process. No network, no server. httpx sends a request, Starlette routes it, your endpoint runs, and the response comes back — all in the same Python process.
 

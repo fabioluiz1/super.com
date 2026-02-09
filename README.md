@@ -76,7 +76,7 @@ backend/
 │   ├── middleware.py        # request ID tracing
 │   └── db/session.py       # async engine, session factory, Base model
 └── tests/
-    ├── conftest.py          # fixtures (in-memory SQLite, async HTTP client)
+    ├── conftest.py          # fixtures (Postgres test DB, async HTTP client)
     └── test_health.py       # health endpoint test
 ```
 
@@ -106,7 +106,7 @@ mise run typecheck:backend    # run static type analysis
 
 #### Testing
 
-pytest with async support, in-memory SQLite for isolation, and httpx for async HTTP calls. `asyncio_mode = "strict"` requires explicit `@pytest.mark.asyncio` on async tests — prevents accidental async tests from silently passing.
+pytest with async support, a separate Postgres test database for isolation, and httpx for async HTTP calls. `asyncio_mode = "strict"` requires explicit `@pytest.mark.asyncio` on async tests — prevents accidental async tests from silently passing.
 
 See [docs/testing.md](docs/testing.md) for fixture details, the dependency override pattern, and why httpx is used over FastAPI's TestClient.
 

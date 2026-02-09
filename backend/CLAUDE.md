@@ -46,7 +46,7 @@ When building CRUD for a new entity, create files in this order:
 ## Testing
 
 - `asyncio_mode = "strict"` — every async test must have `@pytest.mark.asyncio`
-- In-memory SQLite via `aiosqlite` — no Docker needed to run tests
+- Separate Postgres database (`super_test`) — same engine as dev, no dialect mismatches
 - httpx `AsyncClient` with `ASGITransport` — not FastAPI's sync `TestClient`
 - `app.dependency_overrides[get_db]` to inject the test database session
 - `--cov=src --cov-report=term-missing` — coverage is always reported
