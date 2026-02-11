@@ -57,6 +57,11 @@ description = "Generate new migration from model changes"
 dir = "backend"
 run = "uv run alembic revision --autogenerate -m"
 
+[tasks."dev:frontend"]
+description = "Run Vite dev server with hot reload"
+dir = "frontend"
+run = "npm run start"
+
 [tasks."lint:sass"]
 description = "Run stylelint on Sass files"
 dir = "frontend"
