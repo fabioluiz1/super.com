@@ -37,6 +37,12 @@ description = "Run pytest with coverage"
 dir = "backend"
 run = "uv run pytest"
 
+[tasks.python]
+description = "Start Python REPL with backend dependencies available"
+dir = "backend"
+env = { PYTHONSTARTUP = "scripts/pythonstartup.py" }
+run = "uv run python \"$@\""
+
 [tasks."dev:backend"]
 description = "Run FastAPI dev server with hot reload"
 dir = "backend"
