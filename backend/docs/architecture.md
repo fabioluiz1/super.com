@@ -153,7 +153,7 @@ from fastapi import APIRouter, Query
 
 from app.dependencies import DB
 from app.schemas.book import BookListResponse, BookResponse
-from app.services.book import get_book, get_books
+from app.services import book as book_svc
 
 router = APIRouter()
 
@@ -165,14 +165,14 @@ async def list_books(
     limit: int = Query(20, ge=1, le=100),
 ) -> BookListResponse:
     """List paginated books with nested author data."""
-    result = await get_books(db, skip, limit)
+    result = await book_svc.get_books(db, skip, limit)
     return BookListResponse.model_validate(result)
 
 
 @router.get("/books/{book_id}", response_model=BookResponse, status_code=200)
 async def get_book_by_id(db: DB, book_id: int) -> BookResponse:
     """Get a single book by ID. Returns 404 if not found."""
-    book = await get_book(db, book_id)
+    book = await book_svc.get_book(db, book_id)
     return BookResponse.model_validate(book)
 ```
 
@@ -236,9 +236,13 @@ class BookUpdate(BaseModel):
 ```python
 # repositories/book.py
 async def create_book(db: AsyncSession, data: BookCreate) -> Book:
+    # model_dump() converts the Pydantic schema to a dict
+    # ** unpacks it as keyword arguments
     book = Book(**data.model_dump())
     db.add(book)
     await db.flush()
+    # reload the book from DB with its author relationship populated,
+    # so the returned object has nested author data for serialization
     await db.refresh(book, ["author"])
     return book
 
@@ -256,25 +260,64 @@ async def delete_book(db: AsyncSession, book: Book) -> None:
     await db.flush()
 ```
 
+### Create / Update / Delete in the service
+
+The service validates preconditions (entity exists, FK is valid) and raises domain exceptions — the router never touches the repository directly.
+
+```python
+# services/book.py
+from app.exceptions import NotFoundError
+from app.repositories import author as author_repo
+from app.repositories import book as book_repo
+from app.schemas.book import BookCreate, BookUpdate
+
+
+async def create_book(db: AsyncSession, data: BookCreate) -> Book:
+    """Validate the author FK exists, then create the book."""
+    author = await author_repo.get_author_by_id(db, data.author_id)
+    if author is None:
+        raise NotFoundError("Author", data.author_id)
+    return await book_repo.create_book(db, data)
+
+
+async def update_book(db: AsyncSession, book_id: int, data: BookUpdate) -> Book:
+    """Fetch the book or raise 404, then apply partial update."""
+    book = await book_repo.get_book_by_id(db, book_id)
+    if book is None:
+        raise NotFoundError("Book", book_id)
+    return await book_repo.update_book(db, book, data)
+
+
+async def delete_book(db: AsyncSession, book_id: int) -> None:
+    """Fetch the book or raise 404, then delete."""
+    book = await book_repo.get_book_by_id(db, book_id)
+    if book is None:
+        raise NotFoundError("Book", book_id)
+    await book_repo.delete_book(db, book)
+```
+
 ### Write endpoints in the router
 
 ```python
 # routers/book.py
+from app.services import book as book_svc
+
+
 @router.post("/books", response_model=BookResponse, status_code=201)
 async def create_book(db: DB, data: BookCreate) -> BookResponse:
-    book = await svc_create_book(db, data)
+    book = await book_svc.create_book(db, data)
     return BookResponse.model_validate(book)
 
 
 @router.patch("/books/{book_id}", response_model=BookResponse, status_code=200)
 async def update_book(db: DB, book_id: int, data: BookUpdate) -> BookResponse:
-    book = await svc_update_book(db, book_id, data)
+    book = await book_svc.update_book(db, book_id, data)
     return BookResponse.model_validate(book)
 
 
 @router.delete("/books/{book_id}", status_code=204)
 async def delete_book(db: DB, book_id: int) -> None:
-    await svc_delete_book(db, book_id)
+    await book_svc.delete_book(db, book_id)
 ```
 
 ### 5. Integration Tests (`tests/test_<entity>.py`)
