@@ -24,6 +24,7 @@ All documentation must be **didactic, specific, and developer-friendly** — wri
 - Use `git rebase --autosquash` with `git commit --fixup=<sha>` to edit previous commits
 - Never use `git reset --soft` — it changes the log story
 - Each commit should be atomic: one logical change with its corresponding documentation, mise tasks, and README updates
+- **Never bypass pre-commit** — `--no-verify` is forbidden. If the hook fails on a `fixup!` commit message, stash any pending changes with `git stash`, fix the issue, then `git stash pop` after the rebase. The hook exists to catch real problems; skipping it means broken code can enter the history.
 
 ## Mise
 
