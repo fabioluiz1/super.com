@@ -10,6 +10,7 @@ from app.dependencies import DB
 from app.exceptions import DomainError, NotFoundError
 from app.logging import get_logger
 from app.middleware import RequestIDMiddleware
+from app.routers.deal import router as deal_router
 from app.schemas.error import ErrorDetail, ErrorResponse
 
 logger = get_logger(__name__)
@@ -28,6 +29,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
 
 app = FastAPI(lifespan=lifespan)
 app.add_middleware(RequestIDMiddleware)
+app.include_router(deal_router)
 
 
 def _error_json(code: str, message: str) -> dict[str, object]:
