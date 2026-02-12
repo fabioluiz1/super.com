@@ -543,19 +543,17 @@ Follow this loop for every feature from now on.
 
 **2. TELL interviewer what you'll ask Claude to do**:
 
-> "Before I start, let me show you how I documented the backend architecture in my CLAUDE.md."
+> "Before I start, let me show you the backend architecture I documented."
 >
-> *Open CLAUDE.md, scroll to Layered Architecture section.*
+> *Open [architecture.md](../docs/architecture.md) — show the Layers section.*
 >
-> "Each request flows top-down through these layers:
+> "Each request flows through four layers: **schema** (request/response shapes), **repository**
+> (database queries), **service** (business logic), **router** (HTTP wiring). Dependency injection
+> gives every endpoint a database session automatically.
 >
-> - **Dependency injection** — `DB = Annotated[AsyncSession, Depends(get_db)]` injects one database session per request. Every endpoint receives it as a parameter — no manual session management.
-> - **Router** — accepts the HTTP request, delegates to the service or repository, returns the response. No business logic, no raw queries.
-> - **Service** — orchestrates business logic across repositories. Raises HTTP errors (404, 409). Skipped when the endpoint is a straight pass-through.
-> - **Repository** — pure database access. Receives an `AsyncSession`, returns model instances. Never imports FastAPI.
-> - **Schema** — Pydantic models that serialize the response. Reads directly from ORM objects via `from_attributes=True`.
->
-> Because these decisions are already written down, I can delegate the implementation to Claude Code and review against these standards. If something's off, I fix the code or refine the instructions — so the next generation is better.
+> Because these decisions are already written down, I can delegate the implementation to Claude Code
+> and review against these standards. If something's off, I fix the code or refine the
+> instructions — so the next generation is better.
 >
 > If you're good with these patterns, I'll prompt Claude to generate the `/deals` list endpoint."
 
@@ -656,15 +654,7 @@ delete preserves audit history but adds a `WHERE is_deleted = false` to every qu
 
 **If asked: "Why PATCH and not PUT?"**
 
-> "PUT means full replacement — the client must send every field, even the ones that didn't change.
-> If a field is missing from the request, the server is supposed to set it to its default or null.
-> That's fragile: a client that forgets to include `original_price` accidentally wipes it.
->
-> PATCH is partial — the client sends only what changed. The schema uses `Optional` fields with
-> `None` as the default, and the repository skips any field that wasn't provided. And since PATCH
-> already covers the PUT use case — a client *can* send all fields in a PATCH — most APIs just
-> ship PATCH and skip PUT entirely. There's no reason to maintain a separate full-replacement
-> endpoint."
+See [architecture.md — REST Operations](../docs/architecture.md#rest-operations) for the full rationale.
 
 **Prompt Claude Code** (plan mode):
 

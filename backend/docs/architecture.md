@@ -184,6 +184,99 @@ from app.routers.book import router as book_router
 app.include_router(book_router)
 ```
 
+## REST Operations
+
+Every entity exposes a standard set of HTTP endpoints. The verb determines the operation, the status code confirms the outcome.
+
+| Verb | Route | Status | Purpose |
+|------|-------|--------|---------|
+| `GET` | `/books` | 200 | List (paginated) |
+| `GET` | `/books/{id}` | 200 | Detail |
+| `POST` | `/books` | 201 | Create |
+| `PATCH` | `/books/{id}` | 200 | Partial update |
+| `DELETE` | `/books/{id}` | 204 | Hard delete |
+
+### Why PATCH, not PUT
+
+PUT means full replacement — the client must send every field, even the ones that didn't change. If a field is missing from the request, the server is supposed to set it to its default or null. That's fragile: a client that forgets to include `original_price` accidentally wipes it.
+
+PATCH is partial — the client sends only what changed. The schema uses `Optional` fields with `None` as the default, and the repository skips any field that wasn't provided. Since PATCH already covers the PUT use case — a client *can* send all fields in a PATCH — most APIs ship PATCH and skip PUT entirely. There's no reason to maintain a separate full-replacement endpoint.
+
+### Why hard DELETE
+
+This demo uses hard delete (`DELETE FROM`) — the row is permanently removed. It's simpler: no `WHERE is_deleted = false` on every query, no stale rows accumulating in the table, no ambiguity about what "deleted" means.
+
+In production, soft delete (`is_deleted` flag + `deleted_at` timestamp) preserves audit history and allows undo. But it complicates every query — you must filter deleted rows everywhere, including joins and aggregations. Use soft delete when regulatory or business requirements demand it; default to hard delete otherwise.
+
+### Create schema
+
+A separate request schema defines which fields the client provides. The database generates `id`, `created_at`, and `updated_at`.
+
+```python
+# schemas/book.py
+class BookCreate(BaseModel):
+    title: str
+    pages: int = Field(gt=0)
+    author_id: int
+```
+
+### Update schema
+
+All fields are `Optional` — the client sends only what changed. Validators still apply to provided fields.
+
+```python
+# schemas/book.py
+class BookUpdate(BaseModel):
+    title: str | None = None
+    pages: int | None = Field(default=None, gt=0)
+```
+
+### Create / Update / Delete in the repository
+
+```python
+# repositories/book.py
+async def create_book(db: AsyncSession, data: BookCreate) -> Book:
+    book = Book(**data.model_dump())
+    db.add(book)
+    await db.flush()
+    await db.refresh(book, ["author"])
+    return book
+
+
+async def update_book(db: AsyncSession, book: Book, data: BookUpdate) -> Book:
+    for field, value in data.model_dump(exclude_unset=True).items():
+        setattr(book, field, value)
+    await db.flush()
+    await db.refresh(book, ["author"])
+    return book
+
+
+async def delete_book(db: AsyncSession, book: Book) -> None:
+    await db.delete(book)
+    await db.flush()
+```
+
+### Write endpoints in the router
+
+```python
+# routers/book.py
+@router.post("/books", response_model=BookResponse, status_code=201)
+async def create_book(db: DB, data: BookCreate) -> BookResponse:
+    book = await svc_create_book(db, data)
+    return BookResponse.model_validate(book)
+
+
+@router.patch("/books/{book_id}", response_model=BookResponse, status_code=200)
+async def update_book(db: DB, book_id: int, data: BookUpdate) -> BookResponse:
+    book = await svc_update_book(db, book_id, data)
+    return BookResponse.model_validate(book)
+
+
+@router.delete("/books/{book_id}", status_code=204)
+async def delete_book(db: DB, book_id: int) -> None:
+    await svc_delete_book(db, book_id)
+```
+
 ### 5. Integration Tests (`tests/test_<entity>.py`)
 
 See [testing.md](testing.md) for reference test examples covering happy path, nested relations, 404, pagination, and validation (422).
@@ -199,9 +292,9 @@ See [error-handling.md](error-handling.md) for the error envelope format, domain
 
 ## New Entity Checklist
 
-1. [ ] `schemas/<entity>.py` — response models with `from_attributes`, `EntityListResponse = PaginatedResponse[EntityResponse]`
-2. [ ] `repositories/<entity>.py` — `list_`, `count_`, `get_by_id` (add more as needed)
+1. [ ] `schemas/<entity>.py` — response models with `from_attributes`, `EntityListResponse = PaginatedResponse[EntityResponse]`, `EntityCreate`, `EntityUpdate` (all-optional)
+2. [ ] `repositories/<entity>.py` — `list_`, `count_`, `get_by_id`, `create_`, `update_`, `delete_`
 3. [ ] `services/<entity>.py` — return `Paginated[Model]`, orchestration functions, domain exceptions
-4. [ ] `routers/<entity>.py` — endpoints with `response_model`, `Query` params, `DB` dependency
+4. [ ] `routers/<entity>.py` — GET (200), POST (201), PATCH (200), DELETE (204) with `response_model`, `Query` params, `DB` dependency
 5. [ ] `main.py` — `app.include_router(<entity>_router)`
-6. [ ] `tests/test_<entity>.py` — happy path, 404, pagination, validation (422)
+6. [ ] `tests/test_<entity>.py` — happy path, 404, pagination, validation (422), create, update, delete
