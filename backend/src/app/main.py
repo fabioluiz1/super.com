@@ -1,13 +1,12 @@
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
-from typing import Annotated
 
-from fastapi import Depends, FastAPI, Request
+from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 from sqlalchemy import text
-from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.db.session import get_db, shutdown
+from app.db.session import shutdown
+from app.dependencies import DB
 from app.logging import get_logger
 from app.middleware import RequestIDMiddleware
 
@@ -41,21 +40,6 @@ async def unhandled_exception_handler(request: Request, exc: Exception) -> JSONR
         status_code=500,
         content={"detail": "Internal server error"},
     )
-
-
-# Database session type with dependency injection.
-#
-# Annotated[Type, Metadata] combines two things:
-#   - AsyncSession: the type hint (for mypy and IDE autocomplete)
-#   - Depends(get_db): tells FastAPI to call get_db() and inject the result
-#
-# When you write `async def health(db: DB)`, FastAPI:
-#   1. Calls get_db() before each request
-#   2. Passes the yielded session as the `db` argument
-#   3. Closes the session after the response (even if an error occurs)
-#
-# This is dependency injection — you declare what you need, FastAPI provides it.
-DB = Annotated[AsyncSession, Depends(get_db)]
 
 
 @app.get("/health")
