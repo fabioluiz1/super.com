@@ -34,21 +34,36 @@
 
 ## Layered Architecture
 
-When building CRUD for a new entity, create files in this order:
+Every endpoint follows four layers. Each layer has one job and only calls the layer directly below it. Dependency injection (`Depends()`) wires them together — it resolves sessions, services, and config before handler code runs.
 
-1. `schemas/<entity>.py` — Pydantic models with `ConfigDict(from_attributes=True)`. Nest related schemas (e.g., `HotelResponse` inside `DealResponse`).
-2. `repositories/<entity>.py` — async functions using `select()`. Pure data access — no HTTP concepts, no exceptions.
-3. `services/<entity>.py` — thin orchestration. Services raise `HTTPException` (404, 409) — repositories never do.
-4. `routers/<entity>.py` — uses the `DB` alias, `response_model` on each endpoint. Status codes explicit: 200 reads, 201 creates.
-5. Wire the router in `main.py` via `app.include_router()`.
-6. One integration test per endpoint in `tests/`.
+1. **Routers** (`routers/<entity>.py`)
+   - Receive HTTP requests and return HTTP responses — the only layer that knows about HTTP verbs, status codes, and query parameters
+   - Translate domain exceptions from services into `HTTPException` — e.g., `EntityNotFound` → `404`, `ConflictError` → `409`
+   - Declare `response_model` on every endpoint so FastAPI validates the output
+   - Use explicit status codes: `200` for reads, `201` for creates
+   - Wire each router in `main.py` via `app.include_router()`
+
+2. **Services** (`services/<entity>.py`)
+   - Contain business logic and orchestrate calls to one or more repositories
+   - Raise domain exceptions (e.g., `EntityNotFound`, `ConflictError`) — never `HTTPException`
+   - Keep services thin; if a service just forwards to a repo, that's fine
+
+3. **Repositories** (`repositories/<entity>.py`)
+   - Execute database queries — pure data access with no knowledge of HTTP or business rules
+   - Every function takes `AsyncSession` as its first argument and returns model instances (or `None`)
+   - Never raise exceptions; return `None` or an empty list and let the service decide
+
+4. **Schemas** (`schemas/<entity>.py`)
+   - Define the shape of request and response data as Pydantic models
+   - Set `ConfigDict(from_attributes=True)` so schemas can serialize SQLAlchemy models directly
+   - Nest related schemas when the API returns joined data (e.g., `HotelSchema` inside `DealResponse`)
+
+When building CRUD for a new entity, create files bottom-up (schemas → repos → services → routers), then wire the router and add one integration test per endpoint.
 
 ## API Conventions
 
 - All list endpoints return paginated responses with `total`, `skip`, `limit` fields
 - All query parameters use snake_case
-- Repository functions receive `AsyncSession` as first argument, return model instances
-- Services raise `HTTPException` — repositories never raise HTTP errors
 - Always use `selectinload()` for relationships — never rely on lazy loading (causes N+1)
 - Deal responses always include nested hotel data via eager loading
 
