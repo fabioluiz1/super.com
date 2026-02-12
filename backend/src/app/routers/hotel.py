@@ -12,9 +12,10 @@ async def list_hotels(
     db: DB,
     skip: int = Query(0, ge=0),
     limit: int = Query(20, ge=1, le=100),
+    name: str = Query(None, min_length=1),
 ) -> HotelListResponse:
     """List paginated hotels."""
-    result = await hotel_svc.get_hotels(db, skip, limit)
+    result = await hotel_svc.get_hotels(db, skip, limit, name)
     return HotelListResponse.model_validate(result)
 
 

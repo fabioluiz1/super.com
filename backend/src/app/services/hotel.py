@@ -7,10 +7,12 @@ from app.schemas.hotel import HotelCreate, HotelUpdate
 from app.schemas.pagination import Paginated
 
 
-async def get_hotels(db: AsyncSession, skip: int, limit: int) -> Paginated[Hotel]:
+async def get_hotels(
+    db: AsyncSession, skip: int, limit: int, name: str | None = None
+) -> Paginated[Hotel]:
     """Fetch a paginated list of hotels."""
-    items = await hotel_repo.list_hotels(db, skip, limit)
-    total = await hotel_repo.count_hotels(db)
+    items = await hotel_repo.list_hotels(db, skip, limit, name)
+    total = await hotel_repo.count_hotels(db, name)
     return Paginated(items=items, total=total, skip=skip, limit=limit)
 
 

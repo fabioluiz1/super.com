@@ -5,16 +5,23 @@ from app.models import Hotel
 from app.schemas.hotel import HotelCreate, HotelUpdate
 
 
-async def list_hotels(db: AsyncSession, skip: int, limit: int) -> list[Hotel]:
+async def list_hotels(
+    db: AsyncSession, skip: int, limit: int, name: str | None = None
+) -> list[Hotel]:
     """Return a page of hotels ordered by id."""
     stmt = select(Hotel).order_by(Hotel.id).offset(skip).limit(limit)
+    if name:
+        stmt = stmt.where(Hotel.name.ilike(f"%{name}%"))
     result = await db.execute(stmt)
     return list(result.scalars().all())
 
 
-async def count_hotels(db: AsyncSession) -> int:
+async def count_hotels(db: AsyncSession, name: str | None = None) -> int:
     """Return total number of hotels."""
-    result = await db.execute(select(func.count(Hotel.id)))
+    stmt = select(func.count(Hotel.id))
+    if name:
+        stmt = stmt.where(Hotel.name.ilike(f"%{name}%"))
+    result = await db.execute(stmt)
     return result.scalar_one()
 
 
