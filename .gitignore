@@ -31,3 +31,13 @@ __pycache__/
 .ruff_cache/
 .coverage
 backend/.env
+
+# Interview materials & Claude config
+.claude/*
+!.claude/commands/
+.claude/commands/mock-interview-backend.md
+backend/deals-sample.csv
+backend/playbook/
+backend/docs/Super.com-AIinInterviews.pdf
+frontend/assessment/
+frontend/playbook/
