@@ -110,7 +110,7 @@ Sample rows: [deals-sample.csv](deals-sample.csv)
   loading, I need eager"
 - **Adjust approach as requirements evolve** — Pause, restate the change, identify affected
   layers, then prompt
-- **Recognize incorrect AI output** — Catch bugs: wrong types, missing error handling, N+1 queries
+- **Recognize incorrect AI output** — Catch bugs: wrong types, missing error handling
 - **Ask clarifying questions first** — Always ask the interviewer before assuming
 - **Assess correctness, efficiency, maintainability** — Review generated code out loud, suggest
   improvements
@@ -576,25 +576,6 @@ mise run test:backend && mise run typecheck:backend
 
 Manual in Swagger UI (`localhost:8000/docs`):
 - list endpoint returns deals with nested hotel data including `avg_star_rating`
-- check SQL logs — if 21 queries for 20 deals, that's N+1 (fix below)
-
-**Discover N+1 and fix it** — after CRUD works, check SQL logs. Claude generated lazy-loaded code
-(the default). The list endpoint fires one query for deals, then one extra query per deal to load
-its hotel.
-
-**Say aloud**: "I see 21 queries for a 20-deal page — classic N+1. I'll fix this with
-`selectinload(Deal.hotel)` — loads all related hotels in a single second query."
-
-```python
-# Before (lazy — N+1)
-select(Deal)
-
-# After (eager — 2 queries total)
-select(Deal).options(selectinload(Deal.hotel))
-```
-
-Re-run guardrails after fix. Confirm exactly 2 queries in SQL logs.
-
 **5. REVIEW generated code aloud** — check each layer for:
 
 - **DI** — endpoint receives `db: DB`, not a manually created session
@@ -629,74 +610,52 @@ If the interviewer says yes:
 
 > **Commit 5**: `feat: add detail endpoint for deals`
 
-### Round 2 — Write Operations (expect this ~15 min in)
+### Round 2 — Write Operations (expect this ~25 min in)
 
 > **Interviewer**: "Users need to create, update, and delete deals through the API."
 
 **Restate**:
 
-> "So I need three new endpoints: `POST /deals` to create, `PATCH /deals/{id}` to partially
-> update, and `DELETE /deals/{id}` to remove. Create returns 201, update returns 200, delete
-> returns 204 No Content.
->
-> A few things to think about:
-> - **Create** needs `hotel_id` validation — the FK must point to an existing hotel, otherwise
->   the database rejects the insert. The service layer should check this and return a clear 404
->   before hitting the constraint error.
-> - **Update** uses PATCH (partial), not PUT (full replace) — the client sends only the fields
->   that changed. I'll use an update schema where all fields are `Optional`.
-> - **Delete** — I'll ask: do you want soft delete (`is_deleted` flag) or hard delete
->   (`DELETE FROM`)? Soft delete preserves history but complicates queries (every query needs
->   `WHERE is_deleted = false`). Hard delete is simpler. For a deals API, hard delete is fine."
+> "So I need three write endpoints for deals: create, update, and delete. Create needs a
+> `hotel_id` in the request body — the service validates it exists before inserting."
 
-**Clarifying question to ask**: "Should delete be soft (flag) or hard (remove the row)? Soft
-delete preserves audit history but adds a `WHERE is_deleted = false` to every query."
+**Clarifying question to ask**: "Should delete be soft (flag) or hard (remove the row)?"
 
-**If asked: "Why PATCH and not PUT?"**
-
-See [architecture.md — REST Operations](../docs/architecture.md#rest-operations) for the full rationale.
+Architecture handles the rest — see [REST Operations](../docs/architecture.md#rest-operations)
+for status codes, PATCH vs PUT, and hard vs soft delete rationale.
 
 **Prompt Claude Code** (plan mode):
 
-> "Add create, update, and delete endpoints for deals. Create takes a request body with
-> `hotel_id`, validates the hotel exists (return 404 if not), and returns 201. Update uses PATCH
-> with all-optional fields. Delete returns 204. Add Pydantic `@field_validator` rules on request
-> schemas: `price_per_night > 0`, `original_price > 0`, `discount_percent` between 0–100,
-> `checkout_date > checkin_date`. Add integration tests for each — including tests for invalid
-> `hotel_id` on create, 404 on update/delete of non-existent deals, and Pydantic validation
-> rejects invalid input (negative price, discount > 100)."
+> "Add create, update, and delete endpoints for deals. Create takes `hotel_id` in the request
+> body."
+
+Architecture agentic rules handles:
+- Status codes (201 / 200 / 204) → [architecture.md — REST Operations](../docs/architecture.md#rest-operations)
+- PATCH with all-optional fields → [architecture.md — Why PATCH, not PUT](../docs/architecture.md#why-patch-not-put)
+- FK validation (hotel must exist → 404) → [architecture.md — Create / Update / Delete in the service](../docs/architecture.md#create--update--delete-in-the-service)
+- Pydantic validators mirror DB check constraints → [architecture.md — Request schemas and validation](../docs/architecture.md#request-schemas-and-validation)
+- Integration tests for happy + error paths → [testing.md](../docs/testing.md)
 
 #### Transactions
 
-**Say aloud** after Claude generates the code:
+**Say aloud** after Claude generates the code — summarize the transaction model from
+[architecture.md — Transactions](../docs/architecture.md#transactions):
 
-> "FastAPI's `get_db()` dependency gives each request its own database session. The session
-> accumulates changes in memory and flushes them to the database in a single transaction when the
-> request completes. If the endpoint raises an exception, the session rolls back — no partial
-> writes.
->
-> This is sufficient for single-entity operations like creating one deal. But if I needed to
-> create a deal **and** update a hotel's deal count atomically — two separate writes that must
-> both succeed or both fail — I'd use an explicit transaction block:
->
-> ```python
-> async with db.begin():
->     db.add(deal)
->     hotel.deal_count += 1
-> # both commit together, or both roll back
-> ```
->
-> The key rule: **one session per request, one commit at the end**. Never call `db.commit()`
-> manually in the middle of an endpoint — it breaks atomicity. If you need multiple operations
-> to be atomic, they should all happen within the same session transaction."
+> - "`get_db()` gives each request a session with commit-on-success, rollback-on-exception.
+> - All operations within a request are already in one transaction — autobegin starts it on the
+>   first query. Multi-entity writes are atomic by default, no explicit `db.begin()` needed.
+> - Never `db.commit()` in services or repositories — `get_db()` is the single commit point.
+> - Repositories use `db.flush()` — it writes to the database *within* the open transaction
+>   so we can read back generated values (`id`, `created_at`) with `db.refresh()`, but it doesn't
+>   commit. If a later step fails, everything rolls back — including the flushed rows."
 
-If the interviewer asks about concurrent updates:
+If the interviewer asks about concurrent updates — summarize from
+[architecture.md — Optimistic locking](../docs/architecture.md#optimistic-locking):
 
-> "Two users updating the same deal simultaneously is a race condition. The simplest fix is
-> **optimistic locking**: add a `version` column to the model, include it in every update
-> request, and use `WHERE id = :id AND version = :version` in the UPDATE query. If the version
-> doesn't match (another user updated first), the query affects 0 rows — the service returns
-> 409 Conflict. The client retries with the fresh version. No database locks needed."
+> "SQLAlchemy has built-in optimistic locking via `version_id_col`. It adds `WHERE version_id =
+> <current>` to every UPDATE and raises `StaleDataError` if another transaction modified the row.
+> The service catches that and returns 409 Conflict. No manual version tracking needed — I'd add
+> it to any entity where concurrent updates are realistic."
 
 **Verify**:
 
@@ -729,7 +688,7 @@ Adjust if review found issues — fix and re-run guardrails.
 
 > **Commit 6**: `feat: add create, update, and delete endpoints for deals`
 
-### Round 3 — Filtering (expect this ~30 min in)
+### Round 3 — Filtering (expect this ~45 min in)
 
 > **Interviewer**: "Users need to search deals. Add filtering by city, minimum star rating, and a
 > price range (min/max price per night)."
@@ -738,135 +697,108 @@ This is the first time requirements change. The interviewer is watching how you 
 
 **The sequence for every requirement change from now on**:
 
-1. **Pause** — Don't touch the keyboard for 15–30 seconds
-2. **Restate** — "So now we need [X]. Let me think about what this changes."
-3. **Identify affected layers** — "This impacts the repository (new WHERE clause), the schema (new
-   query params), and the router (new parameters). The model doesn't change."
-4. **Decide: AI or manual** — Use this table:
+1. Hands off keyboard — pause 15–30 seconds
 
-- New model + migration + full CRUD stack → Claude Code plan mode
-- Add WHERE clause to existing query → Write it yourself (2 lines)
-- Add query parameter to existing endpoint → Write it yourself (1 line in router, 1 in repo)
-- New relationship + association table + migration → Claude Code plan mode
-- Fix a typo or import → Write it yourself
-- Debug a failing test → Read the error yourself, explain aloud, then decide
+2. **Say aloud**:
 
-5. **Prompt or code** — Follow the loop from Round 1 Step 5
-6. **Verify** — guardrails + manual test (Swagger UI):
-   `mise run test:backend && mise run typecheck:backend`
-7. **Review** — read code aloud, check correctness
-8. **Adjust** if needed — fix issues, re-run guardrails
-9. **Commit**
-
-**Say aloud**: "I'm choosing to write this myself because it's a two-line change and using AI for
-it would be slower than typing it. AI is most valuable for boilerplate and multi-file scaffolding."
-
-**Restate before prompting**:
-
-> "So I need query parameters on the list endpoint: `city` as a string match and `min_stars` as an
-> integer >= filter — both live on the `hotels` table, so the query joins through the `Deal.hotel`
-> relationship. `price_min`/`price_max` as a numeric range — those are directly on `deals`. All
-> optional — if none are provided, return everything (paginated).
+> "I need to add filtering to the list endpoint. Let me think through what changes.
+> Four optional query params:
+> - `city` — string, lives on `hotels` → query joins through `Deal.hotel`
+> - `min_stars` — int, but Hotel has no `star_rating` column today. I need to add a stored
+>   `star_rating` on Hotel, computed as `AVG(deals.rating)`. The deal service recalculates it
+>   on every deal create/update/delete — app-level, not a DB trigger, so the logic is explicit
+>   and testable. That means a new migration for the column + backfill.
+> - `price_min` — Decimal, directly on `deals.price_per_night`
+> - `price_max` — Decimal, directly on `deals.price_per_night`
 >
-> I'll also add database indexes on the columns we're filtering by — `city` and `star_rating` on
-> `hotels`, `price_per_night` on `deals`. Without indexes, every filter is a sequential scan on
-> 50k rows. The indexes go in the same Alembic migration as the filter code."
+> Indexes on every filtered column: `city` and `star_rating` on `hotels`, `price_per_night` on
+> `deals` — without them, every filter is a sequential scan on 50k rows."
+
+3. Build
+   - **Model + Migration**: add `star_rating: Mapped[Decimal]` to `Hotel`, generate migration with backfill from `AVG(deals.rating)`. Add indexes on `hotels.city`, `hotels.star_rating`, `deals.price_per_night`
+   - **Repository**: add WHERE clauses to `list_deals`/`count_deals` — join `Hotel` for `city`/`star_rating`, direct on `deals` for price range. Add helper to recalculate `hotel.star_rating` from `AVG(deals.rating)`
+   - **Service**: forward filter params; recalculate `hotel.star_rating` after deal create/update/delete
+   - **Router**: add 4 optional `Query` params — `city`, `min_stars`, `price_min`, `price_max`
+
+4. Test: `mise run test:backend && mise run typecheck:backend` + Swagger UI
+5. Review aloud
+6. Commit
 
 **Senior challenge**: The interviewer may ask "What if someone searches for 'toronto' but the data
-says 'Toronto'?" — see [4-case-insensitive-search.md](4-case-insensitive-search.md) for the full
-discussion (`ilike` vs `func.lower()` vs functional index).
+says 'Toronto'?"
 
-**Verify**:
+> "A regular B-tree index on `city` won't help — `lower(city)` is a computed expression.
+> I'll add a functional index on `lower(city)` so `WHERE lower(city) = lower('toronto')` hits
+> an index scan instead of scanning every row."
+>
+> ```python
+> # Alembic migration
+> op.create_index("ix_hotels_city_lower", "hotels", [sa.text("lower(city)")])
+> ```
 
-```bash
-mise run test:backend && mise run typecheck:backend
-```
+If the interviewer pushes on partial matches ("tor" → "Toronto"):
 
-Manual — test in Swagger UI: filter by `city=Toronto`, `min_stars=4`, `price_min=50&price_max=150`.
-Confirm results are filtered correctly and empty filters return everything.
+> "Leading wildcards can't use B-tree indexes — even functional ones. For prefix/substring search
+> I'd use a trigram index (`pg_trgm` extension + GIN index). But for exact city matching, the
+> functional index on `lower()` is the right call."
 
-Tests to add (or have Claude add):
-- Filter by `city` — only deals from matching hotels return
-- Filter by `min_stars` — deals from lower-rated hotels are excluded
-- Filter by `price_min` / `price_max` — deals outside the range are excluded
-- Combined filters — all conditions applied together
-- No filters — returns all deals (paginated)
-- No matches — returns empty list, not an error
-
-Verify indexes exist in DBeaver or psql:
-
-```sql
-SELECT indexname, indexdef FROM pg_indexes
-WHERE tablename IN ('hotels', 'deals')
-AND indexname NOT LIKE 'pk_%';
--- ix_hotels_city           | CREATE INDEX ix_hotels_city ON hotels USING btree (city)
--- ix_hotels_star_rating    | CREATE INDEX ix_hotels_star_rating ON hotels USING btree (star_rating)
--- ix_deals_price_per_night | CREATE INDEX ix_deals_price_per_night ON deals USING btree (price_per_night)
-```
-
-**Review**:
-- Read the WHERE clauses aloud, confirm they match the requirements.
-- "Indexes on `city`, `star_rating`, and `price_per_night` match the filter columns — Postgres
-  uses index scans instead of sequential scans. Without them, every filtered query scans all
-  50k rows."
-- Confirm the indexes are in the Alembic migration, not hand-created — so they're reproducible.
-
-Adjust if needed — fix and re-run guardrails.
+See [4-case-insensitive-search.md](4-case-insensitive-search.md) for the full comparison table
+(`ilike` vs `func.lower()` vs functional index vs `citext` vs trigram).
 
 > **Commit 7**: `feat: add filtering by city, star rating, and price range`
 
-### Round 4 — Pagination (expect this ~40 min in)
+### Round 4 — Pagination (expect this ~60 min in)
 
 > **Interviewer**: "The list endpoint returns too much data. Add pagination."
 
-**Restate and propose**:
+1. Hands off keyboard — pause 15–30 seconds
+
+2. **Say aloud**:
 
 > "I'll add offset-based pagination with `skip` and `limit` query parameters, defaulting to
-> `limit=20`. I'll also return the total count so the client knows how many pages exist.
+> `limit=20`. I'll return the total count so the client knows how many pages exist.
 >
-> Two performance caveats for production:
+> Two performance caveats:
+> - **Offset** is O(n) for deep pages — Postgres scans and discards rows. For millions of deals
+>   I'd switch to cursor-based pagination using the primary key — O(log n) via index seek.
+>   But offset is simpler and sufficient for this dataset size.
+> - **COUNT(\*)** is expensive on large PostgreSQL tables — no cached row count like MySQL's
+>   MyISAM. At millions of rows with filters it becomes a bottleneck. Strategies: cache in
+>   Redis with short TTL, approximate count via `reltuples` from `pg_class`, or drop the total
+>   and use 'has next page' semantics (fetch `limit + 1` rows).
 >
-> **Offset** is O(n) for deep pages — Postgres scans and discards rows. For millions of deals, I'd
-> switch to cursor-based pagination using the primary key — O(log n) via index seek. But offset is
-> simpler and sufficient for this dataset size.
->
-> **COUNT(\*)** is expensive on large PostgreSQL tables — there's no cached row count like MySQL's
-> MyISAM. Postgres must scan the table (or an index) to count. For a 50k-row table this is fast,
-> but at millions of rows with filters it becomes a bottleneck. Strategies: cache the count in Redis
-> with a short TTL, return an approximate count via `reltuples` from `pg_class`, or drop the total
-> entirely and use 'has next page' semantics (fetch `limit + 1` rows — if you get the extra row,
-> there's a next page)."
+> The scaffold already has `PaginatedResponse[T]` and `Paginated[T]` — I'll wire them in."
 
-**Verify**:
+3. Build
+   - **Schema**: `DealListResponse = PaginatedResponse[DealResponse]` (already exists)
+   - **Repository**: `list_deals` already takes `skip`/`limit`; `count_deals` already exists
+   - **Service**: return `Paginated[Deal]` with `items`, `total`, `skip`, `limit`
+   - **Router**:
+     - `Query` (`from fastapi import Query`) sets default + validation in one declaration
+     - `skip: int = Query(0, ge=0)` — default 0, must be >= 0 (422 if negative)
+     - `limit: int = Query(20, ge=1, le=100)` — default 20, clamped 1–100 (422 if out of range)
 
-```bash
-mise run test:backend && mise run typecheck:backend
-```
+4. Test: `mise run test:backend && mise run typecheck:backend` + Swagger UI
+   - `skip=0&limit=5` → 5 results, correct `total`
+   - `skip=5&limit=5` → next page
+   - Large `skip` past end → empty list, correct `total`
+   - Pagination with filters → `total` reflects filtered count
 
-Manual — test in Swagger UI: call with `skip=0&limit=5`, confirm 5 results and correct `total`.
-Call with `skip=5&limit=5`, confirm next page. Call with large `skip` past the end, confirm empty
-results with correct `total`.
+5. Review aloud — confirm `total` uses separate `COUNT(*)`, `skip`/`limit` have sensible defaults,
+   response includes `total`, `skip`, `limit` fields
 
-Tests to add (or have Claude add):
-- Default pagination — no params returns first page with default limit
-- Explicit `skip` and `limit` — correct slice of results
-- `skip` past total — returns empty list with correct `total`
-- `total` is accurate — matches actual row count in DB
-- Pagination with filters — `total` reflects filtered count, not all deals
-
-**Review** — confirm `total` uses a separate `COUNT(*)` query, `skip`/`limit` have sensible
-defaults, response schema includes `total`, `skip`, `limit` fields.
-
-Adjust if needed — fix and re-run guardrails.
+6. Commit
 
 > **Commit 8**: `feat: add offset-based pagination with total count`
 
-### Round 5 — Aggregation (expect this ~50 min in)
+### Round 5 — Aggregation (expect this ~70 min in)
 
 > **Interviewer**: "Product wants a dashboard endpoint that shows the average price per night by
 > city, along with the number of deals in each city."
 
-**Restate**:
+1. Hands off keyboard — pause 15–30 seconds
+
+2. **Say aloud**:
 
 > "A `GET /deals/stats` endpoint returning `[{city, avg_price, deal_count}]`. City lives on the
 > `hotels` table, so I'll `JOIN deals ON hotels.id = deals.hotel_id` then `GROUP BY hotels.city`
@@ -874,67 +806,61 @@ Adjust if needed — fix and re-run guardrails.
 > cities come first."
 
 **Clarifying question to ask**: "Does this dashboard data need to be real-time, or is it OK to be
-stale for a few minutes?" — if stale is fine (and for deal stats, it almost always is), cache the
-result in Redis with a TTL. One query serves thousands of users instead of thousands of identical
-aggregations hitting the database concurrently. See
-[5-scaling-aggregation-queries.md](5-scaling-aggregation-queries.md) for the full performance ladder
-(indexes → cache → materialized views → read replicas → partitioning) with cost and
-trade-offs for each.
+stale for a few minutes?" — if stale is fine, cache in Redis with a TTL.
 
-**Senior challenge**: The interviewer may ask "What if we need stats for only available deals?" —
-add a `available_only: bool = True` query param that adds a WHERE clause. Mention that this also
-needs an index on `deals.is_available` and a migration to create it. Ask: "Will most queries filter
-on `is_available = true`? If so, a partial index (`WHERE is_available = true`) is smaller and faster
-than a full index — it only stores rows that match the condition."
+> **Note**: See [5-scaling-aggregation-queries.md](5-scaling-aggregation-queries.md) for the full performance ladder.
 
-**Verify**:
+**Senior challenge**: "What if we need stats for only available deals?" — add
+`available_only: bool = True` query param with WHERE clause. Mention partial index
+(`WHERE is_available = true`) — smaller and faster than a full index when most queries filter on
+`true`.
 
-```bash
-mise run test:backend && mise run typecheck:backend
-```
+3. Build
+   - **Schema**: `CityStatsResponse` with `city: str`, `avg_price: Decimal`, `deal_count: int`
+   - **Repository**: `JOIN deals ON hotels.id = deals.hotel_id`, `GROUP BY hotels.city`,
+     `func.avg(Deal.price_per_night)`, `func.count(Deal.id)`, `ORDER BY deal_count DESC`
+   - **Service**: thin pass-through to repo
+   - **Router**: `GET /deals/stats` → `list[CityStatsResponse]`, status 200
 
-Manual — test in Swagger UI: call `GET /deals/stats`, confirm each city has `avg_price` and
-`deal_count`, results are sorted by deal count descending.
+4. Test: `mise run test:backend && mise run typecheck:backend` + Swagger UI
+   - Stats with data — correct `avg_price` and `deal_count` per city
+   - Stats with empty DB — returns empty list, not error
+   - Sort order — cities ordered by deal count descending
 
-Tests to add (or have Claude add):
-- Stats with data — correct `avg_price` and `deal_count` per city (use known fixture data so
-  expected values are deterministic)
-- Stats with empty DB — returns empty list, not an error
-- Sort order — cities ordered by deal count descending
-- `avg_price` precision — verify rounding behavior matches the response schema type
+5. Review aloud — confirm `JOIN`, `GROUP BY`, `func.avg()`, `func.count()` are correct,
+   response schema matches query output
 
-**Review** — confirm the query uses `JOIN`, `GROUP BY`, `func.avg()`, `func.count()` correctly.
-Check that the response schema matches the query output.
-
-Adjust if needed — fix and re-run guardrails.
+6. Commit
 
 > **Commit 9**: `feat: add stats endpoint with avg price and deal count by city`
 
-### Round 6 — Changing Constraint: Normalize Categories (expect this ~60 min in)
+### Round 6 — Changing Constraint: Normalize Categories (expect this ~80 min in)
 
 > **Interviewer**: "The text-based categories column is hard to query reliably. Normalize categories
 > into a proper many-to-many relationship and let users filter deals by category."
 
 This is the **"Handling Changing Constraints"** moment from the evaluation criteria. You're
-refactoring a working schema — not building from scratch. Pause and think aloud:
+refactoring a working schema — not building from scratch.
+
+1. Hands off keyboard — pause 15–30 seconds
+
+2. **Say aloud**:
 
 > "Right now `categories` is a comma-separated text column on `deals`. Filtering uses
-> `LIKE '%luxury%'` which is slow (no index) and fragile (could match substrings). I need to:
-> 1. Create a `categories` table with `id` and `name` (unique)
-> 2. Create an association table `deal_categories` with `deal_id` and `category_id`
-> 3. Add a `relationship()` on the Deal model with `secondary=deal_categories`
-> 4. Write a **data migration** that parses existing text values, populates the new tables, and
->    drops the `categories` text column
-> 5. Update the list endpoint to accept a `category` filter using a JOIN instead of `LIKE`
+> `LIKE '%luxury%'` which is slow (no index) and fragile (could match substrings). I need to
+> normalize into a many-to-many:
+> - `categories` table with `id` and `name` (unique)
+> - `deal_categories` association table with `deal_id` and `category_id`
+> - `relationship()` on Deal with `secondary=deal_categories`
+> - Data migration: split comma-separated strings, deduplicate names, populate association table,
+>   drop the text column
+> - Update list endpoint: `category` filter via JOIN instead of `LIKE`
+> - Eager loading: `selectinload(Deal.categories)` on every query that needs categories
 >
-> The trickiest part is the data migration — I need to split comma-separated strings into rows,
-> deduplicate category names, and wire up the association table. This is a realistic production
-> scenario: denormalized data being refactored as requirements mature.
->
-> And I need eager loading — `selectinload(Deal.categories)` on every query that returns deals, to
-> avoid N+1."
+> The trickiest part is the data migration — this is a realistic production scenario: denormalized
+> data being refactored as requirements mature."
 
-The resulting schema after Round 5:
+Resulting schema:
 
 ```
 hotels (1) ──< deals (N) >──< categories (M)
@@ -943,114 +869,56 @@ hotels (1) ──< deals (N) >──< categories (M)
                               (association table)
 ```
 
-**Verify**:
+3. Build
+   - **Model**: `Category` table, `deal_categories` association table, `Deal.categories` relationship with `secondary`
+   - **Migration**: create tables + data migration (split text → rows, deduplicate, wire association) + drop `categories` text column
+   - **Repository**: add `selectinload(Deal.categories)` to all deal queries; add `category` filter via JOIN on `deal_categories`
+   - **Service**: forward `category` filter param
+   - **Router**: add optional `category: str` query param
+   - **Schema**: add `categories: list[str]` to `DealResponse`
 
-```bash
-mise run test:backend && mise run typecheck:backend
-```
+4. Test: `mise run test:backend && mise run typecheck:backend` + Swagger UI
+   - Deal response includes `categories` as array (not comma-separated text)
+   - Filter by `category=luxury` — only matching deals return
+   - Filter by non-existent category — empty list, not error
+   - Existing tests still pass with new schema
+   - Verify data migration in psql:
+     ```sql
+     SELECT count(*) FROM categories;
+     SELECT count(*) FROM deal_categories;
+     ```
 
-Manual — test in Swagger UI: call the list endpoint, confirm deal responses include categories as
-an array. Filter by `category=luxury`, confirm only matching deals return. Check the SQL logs —
-confirm `selectinload(Deal.categories)` fires 2 queries, not N+1.
+5. Review aloud — narrate the data migration: "splits comma-separated strings, deduplicates
+   category names, wires up the association table." Check SQL logs — `selectinload` fires
+   2 queries total (one for deals, one for categories).
 
-Tests to add (or have Claude add):
-- Deal response includes `categories` as an array of strings (not comma-separated text)
-- Filter by `category=luxury` — only deals with that category return
-- Filter by non-existent category — returns empty list, not error
-- Deal with multiple categories — all categories appear in the response
-- M:N integrity — creating a deal with categories wires up the association table correctly
-- Existing tests still pass — list, detail, filtering, pagination, CRUD all work with the
-  new schema (categories column replaced by relationship)
-
-Manual — verify the data migration in DBeaver:
-
-```sql
-SELECT count(*) FROM categories;
--- 5
-
-SELECT count(*) FROM deal_categories;
--- ~80000 (many deals have multiple categories)
-
-SELECT d.id, c.name FROM deal_categories dc
-JOIN deals d ON dc.deal_id = d.id
-JOIN categories c ON dc.category_id = c.id
-LIMIT 5;
-```
-
-**Review** the data migration carefully — narrate aloud:
-- "The migration splits comma-separated strings, deduplicates category names, and wires up the
-  association table. The `secondary` table `deal_categories` handles the many-to-many join."
-
-Adjust if needed — fix and re-run guardrails.
+6. Commit
 
 > **Commit 10**: `feat: normalize categories into M:N with data migration`
 
-**Update CLAUDE.md** with query patterns learned:
+**Follow-up commit** — update CLAUDE.md with query patterns learned:
+
+> "I'm adding a rule to CLAUDE.md so that every future prompt follows this pattern automatically.
+> This is how I prevent the AI from making the same class of mistake twice."
 
 ```markdown
 ### Query Patterns
 - Always use `selectinload()` for one-to-many and many-to-many relationships
-- Never rely on lazy loading — it causes N+1 queries
 - For many-to-one (deal → hotel), `joinedload()` is better — single JOIN instead of a second
   query
 - Add database indexes on all columns used in WHERE clauses or JOIN conditions
 ```
 
-**Say aloud**: "I'm adding a rule to CLAUDE.md so that every future prompt follows this pattern
-automatically. This is how I prevent the AI from making the same class of mistake twice."
-
-**Verify** — docs-only change, but confirm nothing broke:
-
-```bash
-mise run test:backend && mise run typecheck:backend
-```
-
 > **Commit 11**: `docs: update CLAUDE.md with query patterns and eager loading rules`
 
-### Round 7 — Performance Discussion (expect this ~75 min in)
+### Round 7 — Performance Discussion (expect this ~85 min in)
 
 > **Interviewer**: "The deals list endpoint is getting slow now that categories are normalized. Walk
 > me through what's happening and how you'd fix it."
 
 This is pure Senior discussion. Lead with the approach, not the answer:
 
-> "I wouldn't guess — I'd measure. There are four things I'd check in order:"
-
-- **N+1 queries**
-  - Symptom: flood of identical queries in logs (21 queries for a 20-item page)
-  - Debug:
-    - Set `echo=True` on the engine, call the endpoint once in Swagger, and visually count the SQL
-      statements in the terminal:
-      ```
-      BAD: 21 queries scroll by for 1 request
-      SELECT * FROM deals LIMIT 20
-      SELECT * FROM categories WHERE deal_id=1  -- +20 identical queries
-      ```
-    - `pg_stat_statements` — find queries with disproportionate `calls`:
-      ```
-      BAD: categories query has 20x the calls of every other query
-      query                                          | calls  | mean_exec_time
-      SELECT * FROM categories WHERE deal_id = $1    | 500000 | 0.3ms  ← N+1
-      SELECT * FROM deals LIMIT $1 OFFSET $2         |  25000 | 1.2ms
-      SELECT * FROM hotels WHERE id = $1             |  25000 | 0.2ms
-      SELECT count(*) FROM deals                     |  25000 | 3.5ms
-      SELECT * FROM deals WHERE id = $1              |   8000 | 0.4ms
-      ```
-  - Fix: `selectinload(Deal.categories)` — batches into one `WHERE deal_id IN (...)`:
-    ```
-    FIXED: 2 queries for 1 request
-    SELECT * FROM deals LIMIT 20
-    SELECT * FROM categories WHERE deal_id IN (1,2,3,...,20)
-    ```
-    ```
-    FIXED: categories calls drops to match other queries
-    query                                                    | calls | mean_exec_time
-    SELECT * FROM categories WHERE deal_id IN ($1,$2,...)    | 25000 | 0.8ms
-    SELECT * FROM deals LIMIT $1 OFFSET $2                   | 25000 | 1.2ms
-    SELECT * FROM hotels WHERE id IN ($1,$2,...)             | 25000 | 0.5ms
-    SELECT count(*) FROM deals                               | 25000 | 3.5ms
-    SELECT * FROM deals WHERE id = $1                        |  8000 | 0.4ms
-    ```
+> "I wouldn't guess — I'd measure. There are three things I'd check in order:"
 
 - **Missing indexes**
   - Symptom: a single query is slow
@@ -1266,14 +1134,6 @@ Don't wait to be asked. After showing the log, volunteer:
 > adds ~1ms but prevents errors. `pool_recycle=3600` recreates connections hourly to avoid stale
 > state. In production, I'd tune pool_size to match expected concurrency per process, and use
 > PgBouncer in front for connection multiplexing across multiple app instances."
-
-#### N+1 Prevention
-
-> "If I load 100 deals and access `.categories` on each one with lazy loading, that's 101
-> queries. `selectinload(Deal.categories)` reduces it to 2 — one for deals, one for all related
-> categories. For many-to-one (e.g., deal -> hotel), `joinedload()` is better because it's a
-> single JOIN. I added a CLAUDE.md rule to always use eager loading so the AI doesn't generate
-> lazy-loaded code."
 
 #### Pagination Trade-offs
 
