@@ -5,7 +5,6 @@ from httpx import ASGITransport, AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 from sqlalchemy.pool import NullPool
 
-import tests.seeds  # noqa: F401 — fixtures defined in seeds.py
 from app.db.session import Base, get_db
 from app.main import app
 
