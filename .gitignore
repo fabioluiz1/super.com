@@ -37,7 +37,6 @@ backend/.env
 !.claude/commands/
 .claude/commands/mock-interview-backend.md
 backend/deals-sample.csv
-backend/playbook/
 backend/docs/Super.com-AIinInterviews.pdf
 frontend/assessment/
 frontend/playbook/
