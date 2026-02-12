@@ -8,6 +8,11 @@ from sqlalchemy.pool import NullPool
 from app.db.session import Base, get_db
 from app.main import app
 
+# Pytest only picks up fixtures from conftest.py files. Fixtures defined in other
+# modules (like tests/seeds.py) are invisible unless we register them here.
+# A plain `import tests.seeds` won't work — pytest_plugins is the way to do it.
+pytest_plugins = ["tests.seeds"]
+
 # Separate Postgres database for tests — created by docker/init-test-db.sql on first startup
 TEST_DATABASE_URL = "postgresql+asyncpg://super@localhost:5432/super_test"
 
