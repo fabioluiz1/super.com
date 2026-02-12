@@ -43,6 +43,15 @@ When building CRUD for a new entity, create files in this order:
 5. Wire the router in `main.py` via `app.include_router()`.
 6. One integration test per endpoint in `tests/`.
 
+## API Conventions
+
+- All list endpoints return paginated responses with `total`, `skip`, `limit` fields
+- All query parameters use snake_case
+- Repository functions receive `AsyncSession` as first argument, return model instances
+- Services raise `HTTPException` — repositories never raise HTTP errors
+- Always use `selectinload()` for relationships — never rely on lazy loading (causes N+1)
+- Deal responses always include nested hotel data via eager loading
+
 ## Testing
 
 - `asyncio_mode = "strict"` — every async test must have `@pytest.mark.asyncio`
