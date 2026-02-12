@@ -30,6 +30,7 @@ All documentation must be **didactic, specific, and developer-friendly** — wri
 
 - mise is the single tool for version pinning, task running, and git hooks — replacing nvm, husky, and lint-staged
 - All linter/formatter/build commands are defined as mise tasks in `.mise.toml`
+- **Always use `mise run <task>` to run commands** — never invoke tools directly (`uv run pytest`, `npx jest`, `npm run lint`, etc.). The mise tasks have the correct working directory, flags, and environment already configured.
 - Task names must be specific and unambiguous: `install:frontend` not `install`, `lint:sass` not `lint:css`
 - The `pre-commit` task depends on all check tasks and runs them in parallel
 - `mise run setup` installs the git pre-commit hook — this is part of the quickstart, not optional
