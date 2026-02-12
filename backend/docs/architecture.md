@@ -208,21 +208,21 @@ This demo uses hard delete (`DELETE FROM`) — the row is permanently removed. I
 
 In production, soft delete (`is_deleted` flag + `deleted_at` timestamp) preserves audit history and allows undo. But it complicates every query — you must filter deleted rows everywhere, including joins and aggregations. Use soft delete when regulatory or business requirements demand it; default to hard delete otherwise.
 
-### Create schema
+### Request schemas and validation
 
-A separate request schema defines which fields the client provides. The database generates `id`, `created_at`, and `updated_at`.
+Request schemas define which fields the client provides on create and update. The database generates `id`, `created_at`, and `updated_at`.
+
+**Mirror every database check constraint as a Pydantic `Field()` or `@field_validator`** — so invalid data is rejected at the API boundary (422) before reaching the database. The DB constraint is the safety net for anything that bypasses the API (direct SQL, data migrations); the Pydantic validator gives clients a clear, structured error instead of a raw `IntegrityError`.
 
 ```python
 # schemas/book.py
 class BookCreate(BaseModel):
     title: str
-    pages: int = Field(gt=0)
+    pages: int = Field(gt=0)          # mirrors CHECK (pages > 0)
     author_id: int
 ```
 
-### Update schema
-
-All fields are `Optional` — the client sends only what changed. Validators still apply to provided fields.
+Update schemas make all fields `Optional` — the client sends only what changed. Validators still apply to provided fields.
 
 ```python
 # schemas/book.py
