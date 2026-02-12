@@ -320,6 +320,90 @@ async def delete_book(db: DB, book_id: int) -> None:
     await book_svc.delete_book(db, book_id)
 ```
 
+### Transactions
+
+`get_db()` gives each request its own `AsyncSession` with a request-scoped transaction:
+
+```python
+# db/session.py
+async def get_db() -> AsyncGenerator[AsyncSession, None]:
+    async with async_session() as session:
+        try:
+            yield session
+            await session.commit()    # happy path — persist all flushes
+        except Exception:
+            await session.rollback()  # any exception — discard everything
+            raise
+```
+
+SQLAlchemy's **autobegin** starts a transaction on the first database operation. Every `flush()` within the request writes to the database inside this single transaction but doesn't commit. When the request finishes, `get_db()` commits or rolls back the entire transaction — including all flushed writes.
+
+This means **all operations within a request are already atomic**, even multi-entity writes:
+
+```python
+# services/booking.py — both writes are in the same request-scoped transaction
+async def confirm_booking(db: AsyncSession, booking_id: int) -> Booking:
+    booking = await booking_repo.get_by_id(db, booking_id)
+    if booking is None:
+        raise NotFoundError("Booking", booking_id)
+    booking.status = "confirmed"
+    await db.flush()                       # flush #1 — written, not committed
+    booking.hotel.available_rooms -= 1
+    await db.flush()                       # flush #2 — written, not committed
+    return booking
+    # get_db() commits both, or rolls back both
+```
+
+**No explicit `db.begin()` needed.** Calling `db.begin()` when autobegin already started a transaction raises `InvalidRequestError`. The request-scoped transaction handles atomicity for you.
+
+**Rules:**
+- Never call `db.commit()` or `db.begin()` in service or repository code — `get_db()` manages the transaction
+- Repositories use `db.flush()` (sends SQL within the open transaction) and `db.refresh()` (reloads DB-generated values like `id`, `created_at`) — neither commits
+- If you see `db.commit()` in generated code, remove it — it breaks atomicity when the service orchestrates multiple repo calls
+
+### Optimistic locking
+
+Two users updating the same row simultaneously is a race condition — the second write silently overwrites the first. **Optimistic locking** detects this: every UPDATE checks that the row hasn't changed since it was read, and fails if it has.
+
+SQLAlchemy supports this natively via `version_id_col`. Add a version column and declare it in `__mapper_args__`:
+
+```python
+# models.py
+class Book(Base):
+    __tablename__ = "books"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    version_id: Mapped[int] = mapped_column(default=1)
+    title: Mapped[str]
+
+    __mapper_args__ = {"version_id_col": version_id}
+```
+
+SQLAlchemy automatically:
+1. Adds `WHERE version_id = <current>` to every UPDATE
+2. Increments `version_id` on flush
+3. Raises `StaleDataError` if 0 rows matched (another transaction updated first)
+
+The service catches this and raises `ConflictError` (→ 409):
+
+```python
+# services/book.py
+from sqlalchemy.orm.exc import StaleDataError
+
+async def update_book(db: AsyncSession, book_id: int, data: BookUpdate) -> Book:
+    book = await book_repo.get_book_by_id(db, book_id)
+    if book is None:
+        raise NotFoundError("Book", book_id)
+    try:
+        return await book_repo.update_book(db, book, data)
+    except StaleDataError:
+        raise ConflictError("Book was modified by another request. Retry with fresh data.")
+```
+
+**When to use it:** any entity where concurrent updates are realistic (deals, bookings, inventory). Not needed for append-only or read-heavy entities.
+
+**This demo doesn't implement optimistic locking** — it adds complexity (version column, migration, conflict handling) that isn't justified for a CRUD exercise. But it's the right answer when the interviewer asks "what about concurrent updates?"
+
 ### 5. Integration Tests (`tests/test_<entity>.py`)
 
 See [testing.md](testing.md) for reference test examples covering happy path, nested relations, 404, pagination, and validation (422).

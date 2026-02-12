@@ -217,10 +217,10 @@ Test in Swagger: POST valid → 201, POST bad hotel_id → 404, POST with `price
 > "Pydantic validates API input — 422 before hitting the DB. Check constraints are the safety net for anything that bypasses the API. Both enforce the same rules but serve different purposes."
 
 **Say out loud (transactions):**
-> "get_db gives each request its own session. Changes flush in a single transaction at the end. If the endpoint raises, session rolls back. For multi-write atomicity: `async with db.begin()`. Never call db.commit() mid-endpoint."
+> "get_db commits on success, rolls back on exception. Autobegin means all operations in a request are already in one transaction — multi-entity writes are atomic by default. Never db.commit() or db.begin() in services."
 
 **If asked about concurrent updates:**
-> "Optimistic locking — add a version column, `WHERE id = :id AND version = :v`. 0 rows affected = 409 Conflict. Client retries."
+> "SQLAlchemy has built-in optimistic locking via `version_id_col` — auto WHERE, auto increment, raises StaleDataError. Service catches it, returns 409 Conflict."
 
 **Commit:** `feat: add create, update, delete endpoints for deals`
 
