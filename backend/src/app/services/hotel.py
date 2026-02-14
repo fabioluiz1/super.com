@@ -1,3 +1,5 @@
+from collections import defaultdict
+
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.exceptions import NotFoundError
@@ -43,3 +45,18 @@ async def delete_hotel(db: AsyncSession, hotel_id: int) -> None:
     if hotel is None:
         raise NotFoundError("Hotel", hotel_id)
     await hotel_repo.delete_hotel(db, hotel)
+
+
+async def get_hotels_grouped_by_city(
+    db: AsyncSession,
+    skip: int,
+    limit: int,
+    name: str | None = None,
+    max_per_group: int | None = None,
+) -> dict[str, list[Hotel]]:
+    """Fetch a page of hotels and group them by city."""
+    hotels = await hotel_repo.list_all_hotels(db, skip, limit, name, max_per_group=max_per_group)
+    grouped: dict[str, list[Hotel]] = defaultdict(list)
+    for hotel in hotels:
+        grouped[hotel.city].append(hotel)
+    return dict(grouped)

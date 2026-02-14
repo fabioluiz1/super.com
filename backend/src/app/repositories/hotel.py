@@ -16,6 +16,51 @@ async def list_hotels(
     return list(result.scalars().all())
 
 
+async def list_all_hotels(
+    db: AsyncSession,
+    skip: int,
+    limit: int,
+    name: str | None = None,
+    max_per_group: int | None = None,
+) -> list[Hotel]:
+    """Return hotels ordered by city then id.
+
+    When *max_per_group* is set, at most that many hotels are returned per
+    city using a ``ROW_NUMBER()`` window function so the filtering happens
+    entirely in the database.
+    """
+    if max_per_group is not None:
+        row_num = (
+            func.row_number()
+            .over(
+                partition_by=Hotel.city,
+                order_by=Hotel.id,
+            )
+            .label("row_num")
+        )
+
+        inner = select(Hotel.id, row_num)
+        if name:
+            inner = inner.where(Hotel.name.ilike(f"%{name}%"))
+        subq = inner.subquery()
+
+        stmt = (
+            select(Hotel)
+            .join(subq, Hotel.id == subq.c.id)
+            .where(subq.c.row_num <= max_per_group)
+            .order_by(Hotel.city, Hotel.id)
+            .offset(skip)
+            .limit(limit)
+        )
+    else:
+        stmt = select(Hotel).order_by(Hotel.city, Hotel.id).offset(skip).limit(limit)
+        if name:
+            stmt = stmt.where(Hotel.name.ilike(f"%{name}%"))
+
+    result = await db.execute(stmt)
+    return list(result.scalars().all())
+
+
 async def count_hotels(db: AsyncSession, name: str | None = None) -> int:
     """Return total number of hotels."""
     stmt = select(func.count(Hotel.id))

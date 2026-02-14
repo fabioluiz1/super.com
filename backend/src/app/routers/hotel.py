@@ -1,7 +1,13 @@
 from fastapi import APIRouter, Query
 
 from app.dependencies import DB
-from app.schemas.hotel import HotelCreate, HotelListResponse, HotelResponse, HotelUpdate
+from app.schemas.hotel import (
+    HotelCreate,
+    HotelGroupedResponse,
+    HotelListResponse,
+    HotelResponse,
+    HotelUpdate,
+)
 from app.services import hotel as hotel_svc
 
 router = APIRouter(prefix="/api/v1")
@@ -17,6 +23,23 @@ async def list_hotels(
     """List paginated hotels."""
     result = await hotel_svc.get_hotels(db, skip, limit, name)
     return HotelListResponse.model_validate(result)
+
+
+@router.get("/hotels/grouped", response_model=HotelGroupedResponse, status_code=200)
+async def list_hotels_grouped(
+    db: DB,
+    by: str = Query("city", pattern="^city$"),
+    skip: int = Query(0, ge=0),
+    limit: int = Query(20, ge=1, le=100),
+    name: str = Query(None, min_length=1),
+    max_per_group: int = Query(2, ge=1, le=100),
+) -> HotelGroupedResponse:
+    """List hotels grouped by city."""
+    return HotelGroupedResponse.model_validate(
+        await hotel_svc.get_hotels_grouped_by_city(
+            db, skip, limit, name, max_per_group=max_per_group
+        )
+    )
 
 
 @router.get("/hotels/{hotel_id}", response_model=HotelResponse, status_code=200)
